@@ -8,6 +8,7 @@ module "router-pool1" {
   labels = {
     bgp_router = "true",
     bgp_router_subnet = "1",
+    az = "1",
   }
 
   aws_node_pool = {
@@ -15,6 +16,7 @@ module "router-pool1" {
     tags = {
       bgp_router = "true",
       bgp_router_subnet = "1",
+      az = "1",
       Owner = var.owner
     }
     additional_security_group_ids = tolist(
@@ -45,6 +47,7 @@ module "router-pool2" {
   labels = {
     bgp_router = "true",
     bgp_router_subnet = "2",
+    az = "2",
   }
 
   aws_node_pool = {
@@ -52,6 +55,7 @@ module "router-pool2" {
     tags = {
       bgp_router = "true",
       bgp_router_subnet = "2",
+      az = "2",
       Owner = var.owner
     }
     additional_security_group_ids = tolist(
@@ -81,6 +85,7 @@ module "router-pool3" {
   labels = {
     bgp_router = "true",
     bgp_router_subnet = "3",
+    az = "3",
   }
 
   aws_node_pool = {
@@ -88,6 +93,7 @@ module "router-pool3" {
     tags = {
       bgp_router = "true",
       bgp_router_subnet = "3",
+      az = "3",
       Owner = var.owner
     }
     additional_security_group_ids = tolist(
