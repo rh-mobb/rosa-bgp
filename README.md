@@ -102,6 +102,16 @@ vpc2-ext_public_subnets = ["192.168.101.0/24", "192.168.102.0/24", "192.168.103.
 terraform init
 terraform apply
 ```
+
+**Note**: The deployment automatically runs `scripts/disable_src_dst_check.sh` to disable source/destination checking on BGP router instances. By default, the script targets instances with tag `bgp_router=true` in region `eu-central-1`. To customize these values, set environment variables before running terraform:
+
+```bash
+export AWS_REGION="us-east-1"  # Override target region
+export TAG_KEY="bgp_router"     # Override tag key (default: bgp_router)
+export TAG_VALUE="true"         # Override tag value (default: true)
+terraform apply
+```
+
 ##### 4.1 (Optional) Have a coffee or tea
 This will take a while... approx. 30-40min
 
