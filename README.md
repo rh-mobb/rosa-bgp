@@ -5,16 +5,17 @@ Configuration in this repository manages traffic flow across three distinct priv
 | Network Domain | CIDR Range | Role in the Topology |
 | :--- | :--- | :--- |
 | **Local AWS VPC** | `10.0.0.0/16` | Hosts the OpenShift cluster, worker nodes, and any local EC2 consumers. |
-| **OpenShift Pod Network** | `10.100.0.0/16` | Hosts all Pods and KubeVirt VMs. 
+| **OpenShift Pod Network (CUDN1)** | `10.100.0.0/16` | cluster-udn-prod - Hosts Pods and KubeVirt VMs |
+| **OpenShift Pod Network (CUDN2)** | `10.101.0.0/16` | cluster-udn-second - Additional Pod network |
 | **External VPC** | `192.168.0.0/16` | An external network, connected via Transit Gateway, that needs direct access to the KubeVirt VMs. |
 ### Requirements
-**Ingress:** External systems (in `10.0.0.0/16` or `192.168.0.0/16`) must send traffic directly to the VM's Pod IP (`10.100.x.x`) without address translation.
+**Ingress:** External systems (in `10.0.0.0/16` or `192.168.0.0/16`) must send traffic directly to the VM's Pod IP (`10.100.x.x` or `10.101.x.x`) without address translation.
 
-**Egress:** Traffic originating from the KubeVirt VM must exit cluster with the VM's original Pod IP (`10.100.x.x`) preserved as the source address.
+**Egress:** Traffic originating from the KubeVirt VM must exit cluster with the VM's original Pod IP (`10.100.x.x` or `10.101.x.x`) preserved as the source address.
 
 # Approach
 
-Using Amazon VPC Route Server to dynamically update subnet route tables and send traffic destined for Pod network (10.100.0.0/16) to ROSA worker node.
+Using Amazon VPC Route Server to dynamically update subnet route tables and send traffic destined for Pod networks (10.100.0.0/16, 10.101.0.0/16) to ROSA worker node.
 Routes will be populated to VPC Route Server via BGP protocol, leveraging frr-k8s on dedicated "router" worker nodes to conduct route advertisements (1 per AZ - 3 in total). 
 VPC Route Server has an active BGP sessions and prefix from all 3 routing workers in RIB, but only one can be installed in FIB (subnet RTs). 
 This means that only one routing node can be active as a router for Pod network at a time, but in case of an outage (tracked via bgp keepalive), VPC Route Server will adjust subnet RTs to route Pod network to the next surviving node, ensuring high availability. 
@@ -40,8 +41,8 @@ Deployment of ROSA and variours AWS infastructure componets, in summary
 - associate TGW with both VPC, create attachments and routes
 - configuration for k8s-frr to peer with VPC Route Server endpoints
 - create *cudn1* namespace
-- create CUDN *cluster-udn-prod* with subnet 10.100.0.0/16 (topology Layer2)
-- Create route advertisement for CUDN
+- create CUDNs *cluster-udn-prod* (10.100.0.0/16) and *cluster-udn-second* (10.101.0.0/16) (topology Layer2)
+- Create route advertisement for CUDNs
 
 ## Diagram
 Target state will look like this
@@ -144,9 +145,9 @@ There are 3 yaml files:
 
 _oc-apply-cudn1.yaml_ - create namespace **cudn1**
 
-_oc-apply-cudn2.yaml_ - create CUDN **cluster-udn-prod**
+_oc-apply-cudn2.yaml_ - create CUDNs **cluster-udn-prod** and **cluster-udn-second**
 
-_oc-apply-cudn3.yaml_ - Create route advertisement for CUDN
+_oc-apply-cudn3.yaml_ - Create route advertisement for CUDNs
 
 Now install OpenShift Virtualization:
 ```bash
