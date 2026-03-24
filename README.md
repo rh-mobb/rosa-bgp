@@ -65,12 +65,21 @@ cd rosa-bgp
 ```
 
 ### 3. Review and adjust terraform.tfvars to your needs 
+
+```bash
+cp terraform.tfvars.example terraform.tfvars`
+# Then edit terraform.tfvars
+```
+
 You might want to update at least "aws_region" and "owner" variable
 ```hcl
 aws_region = "eu-central-1"
 owner = "CHANGE-ME" # used as tag Owner = var.owner for AWS resources
 project = "ROSA-Virt BGP" # used as tag Project = var.project for AWS resources
 project_id = "-bgp" # Optional: appended to AWS resource names after owner for easier identification, e.g. name = "${var.owner}${var.project_id}-vpc1-rosa". If kept empty, then it will be omitted
+# Additional tags applied to all AWS resources
+tags = {
+}
 
 rosa_cluster_name = "myrosa1"
 rosa_openshift_version = "4.20.0"
