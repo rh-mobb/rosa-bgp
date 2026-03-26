@@ -55,9 +55,12 @@
     * Failure of worker node that is the route next hop (simulate by forcing termination through EC2 console). Traffic should continue being passed.
         * CUDN VM to EC2 instance in same VPC - expected to succeed - PASS
             * No packet loss was observed when ping ran with default 1 second interval
-        * CUDN VM to same VPC to transit gateway to EC2 instance in different VPC - expected to succeed
-        * EC2 instance in same VPC to CUDN VM - expected to succeed
-        * EC2 instance in different VPC to transit gateway to same VPC to CUDN VM - expected to succeed
+        * CUDN VM to same VPC to transit gateway to EC2 instance in different VPC - expected to succeed - PASS
+            * No packet loss was observed when ping ran with default 1 second interval
+       * EC2 instance in same VPC to CUDN VM - expected to succeed - PASS
+            * No packet loss was observed when ping ran with default 1 second interval
+        * EC2 instance in different VPC to transit gateway to same VPC to CUDN VM - expected to succeed - PASS
+            * No packet loss was observed when ping ran with default 1 second interval
     * MachinePool scaledown causes worker node that is the route next hop to be deleted
         * CUDN VM to EC2 instance in same VPC - expected to succeed
         * CUDN VM to same VPC to transit gateway to EC2 instance in different VPC - expected to succeed
