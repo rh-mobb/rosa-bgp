@@ -1,0 +1,18 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::<account-id>:oidc-provider/<oidc-provider>"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "<oidc-provider>:sub": "system:serviceaccount:eni-srcdst-disable:eni-srcdst-disable",
+          "<oidc-provider>:aud": "openshift"
+        }
+      }
+    }
+  ]
+}
