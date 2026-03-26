@@ -1,6 +1,8 @@
 locals {
-  tags = {
-    Owner = var.owner
-    Project = var.project
-  }
+  tags = merge(
+    {
+      Project = var.project
+    },
+    var.tags
+  )
 }

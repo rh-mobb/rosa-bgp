@@ -65,6 +65,12 @@ cd rosa-bgp
 ```
 
 ### 3. Review and adjust terraform.tfvars to your needs 
+
+```bash
+cp terraform.tfvars.example terraform.tfvars`
+# Then edit terraform.tfvars
+```
+
 You might want to update at least "aws_region" and "owner" variable
 ```hcl
 aws_region = "eu-central-1"
@@ -76,6 +82,9 @@ aws_region = "eu-central-1"
 owner = "CHANGE-ME" # used as tag Owner = var.owner for AWS resources
 project = "ROSA-Virt BGP" # used as tag Project = var.project for AWS resources
 project_id = "-bgp" # Optional: appended to AWS resource names after owner for easier identification, e.g. name = "${var.owner}${var.project_id}-vpc1-rosa". If kept empty, then it will be omitted
+# Additional tags applied to all AWS resources
+tags = {
+}
 
 rosa_cluster_name = "myrosa1"
 rosa_openshift_version = "4.20.0"
@@ -98,6 +107,16 @@ vpc2-ext_public_subnets = ["192.168.101.0/24", "192.168.102.0/24", "192.168.103.
 terraform init
 terraform apply
 ```
+
+**Note**: The deployment automatically runs `scripts/disable_src_dst_check.sh` to disable source/destination checking on BGP router instances. By default, the script targets instances with tag `bgp_router=true` in region `eu-central-1`. To customize these values, set environment variables before running terraform:
+
+```bash
+export AWS_REGION="us-east-1"  # Override target region
+export TAG_KEY="bgp_router"     # Override tag key (default: bgp_router)
+export TAG_VALUE="true"         # Override tag value (default: true)
+terraform apply
+```
+
 ##### 4.1 (Optional) Have a coffee or tea
 This will take a while... approx. 30-40min
 
@@ -121,12 +140,12 @@ Note: If you get an error about openshift-frr-k8s namespace not available, just 
 ^^ This is just a quick hack, to be done in more "elegant" way later
 
 
-### 7. Apply oc configs 
-Run oc apply on folder with yaml files:
+### 7. Apply oc configs and install OpenShift Virtualization
+Run oc apply on folder with yaml files to create CUDN:
 ```bash
 oc apply -f yamls/
 ```
-There are 3 yaml file:
+There are 3 yaml files:
 
 _oc-apply-cudn1.yaml_ - create namespace **cudn1**
 
@@ -134,14 +153,39 @@ _oc-apply-cudn2.yaml_ - create CUDN **cluster-udn-prod**
 
 _oc-apply-cudn3.yaml_ - Create route advertisement for CUDN
 
-
-
-
-# 8. Install OCP-Virt operator 
-Now you can Install OCP-Virt operator and start VMs in cudn1 project. They should all be directly accessible by their Pod IPs from vpc1 and vpc2.
-Whether you prefer oc-cli or web console, you can find all necessary details, like **rosa_api_url**, **rosa_console_url** and **rosa_cluster_admin_password**,  in _terraform output_
+Now install OpenShift Virtualization:
 ```bash
-terraform output
+./oc-virt-install.sh
+```
+
+This script will:
+- Create the openshift-cnv namespace
+- Subscribe to the kubevirt-hyperconverged operator
+- Create the HyperConverged CR to enable all components
+- Wait for the operator to be fully available (2-5 minutes)
+- Verify the installation
+
+**Note**: The installation may take several minutes. The script will show progress updates.
+
+
+# 8. Use OpenShift Virtualization
+OpenShift Virtualization is now installed and ready to use. You can create VMs in the `cudn1` namespace, and they will be directly accessible by their Pod IPs from both vpc1 and vpc2.
+
+To access the cluster console and create VMs:
+```bash
+terraform output rosa_console_url
+terraform output rosa_cluster_admin_password
+```
+
+To verify OpenShift Virtualization installation:
+```bash
+oc get hco -n openshift-cnv
+oc get pods -n openshift-cnv
+```
+
+To disable automatic installation of OpenShift Virtualization, set in terraform.tfvars:
+```hcl
+install_openshift_virt = false
 ```
 
 

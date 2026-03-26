@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Configuration Variables
-TAG_KEY="bgp_router"
-TAG_VALUE="true"
-AWS_REGION="eu-central-1"
+# Configuration Variables (can be overridden via environment variables)
+TAG_KEY="${TAG_KEY:-bgp_router}"
+TAG_VALUE="${TAG_VALUE:-true}"
+AWS_REGION="${AWS_REGION:-eu-central-1}"
 
 echo "--- Starting Src/Dst Check modification script ---"
 echo "Targeting instances with tag: ${TAG_KEY}=${TAG_VALUE} in ${AWS_REGION}"
