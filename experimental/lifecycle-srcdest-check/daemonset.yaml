@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: eni-srcdst-disable
+  namespace: eni-srcdst-disable
+spec:
+  selector:
+    matchLabels:
+      app: eni-srcdst-disable
+  template:
+    metadata:
+      labels:
+        app: eni-srcdst-disable
+    spec:
+      serviceAccountName: eni-srcdst-disable
+      hostNetwork: true
+      priorityClassName: system-node-critical
+      tolerations:
+        - operator: Exists
+      initContainers:
+        - name: disable-srcdst
+          image: public.ecr.aws/aws-cli/aws-cli:latest
+          env:
+            - name: AWS_ROLE_ARN
+              value: arn:aws:iam::<account-id>:role/eni-srcdst-disable
+            - name: AWS_WEB_IDENTITY_TOKEN_FILE
+              value: /var/run/secrets/openshift/serviceaccount/token
+            - name: AWS_DEFAULT_REGION
+              value: <region>
+            - name: HOME
+              value: /tmp
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              TOKEN=$(curl -sf -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 60" \
+                http://169.254.169.254/latest/api/token)
+              MAC=$(curl -sf -H "X-aws-ec2-metadata-token: $TOKEN" \
+                http://169.254.169.254/latest/meta-data/network/interfaces/macs/ | head -1 | tr -d '/')
+              ENI=$(curl -sf -H "X-aws-ec2-metadata-token: $TOKEN" \
+                http://169.254.169.254/latest/meta-data/network/interfaces/macs/${MAC}/interface-id)
+              echo "Disabling SrcDst check on $ENI"
+              aws ec2 modify-network-interface-attribute \
+                --network-interface-id "$ENI" \
+                --no-source-dest-check
+          volumeMounts:
+            - name: bound-sa-token
+              mountPath: /var/run/secrets/openshift/serviceaccount
+              readOnly: true
+      containers:
+        - name: pause
+          image: registry.k8s.io/pause:3.9
+      volumes:
+        - name: bound-sa-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: openshift
+                  expirationSeconds: 3600
+                  path: token
