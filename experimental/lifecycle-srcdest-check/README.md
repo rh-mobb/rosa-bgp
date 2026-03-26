@@ -33,142 +33,128 @@ The idea is:
 
 ## Files in this directory
 
+### Kubernetes Manifests
 - `namespace.yaml` — dedicated namespace for the DaemonSet
-- `serviceaccount.yaml` — ServiceAccount annotated with the IAM role ARN
-- `daemonset.yaml` — worker-node DaemonSet that disables Src/Dst check
-- `iam-policy.json` — example IAM permissions policy
-- `trust-policy.json` — example OIDC trust policy
+- `serviceaccount.yaml` — ServiceAccount annotated with the IAM role ARN (templated)
+- `daemonset.yaml` — worker-node DaemonSet that disables Src/Dst check (templated)
+
+### Terraform Configuration
+- `../../eni-srcdst-iam.tf` — IAM policy and role with OIDC trust (automatically integrated with Terraform)
+
+### Deployment Script
+- `deploy.sh` — automated deployment script that handles variable substitution and OpenShift configuration
+
+### Reference Files (not used by automated workflow)
+- `iam-policy.json` — example IAM permissions policy (reference only)
+- `trust-policy.json` — example OIDC trust policy (reference only)
 
 ## Prerequisites
 
-- AWS CLI configured with permissions to create IAM policies and IAM roles
-- `oc` logged into the **guest cluster** (not the management cluster)
-- your ROSA cluster name
-- your AWS account ID
-- your cluster OIDC issuer / provider path :contentReference[oaicite:10]{index=10}
+- Terraform initialized in the project root
+- AWS CLI configured with permissions (used by Terraform for IAM resources)
+- `oc` CLI installed
 
-## Required placeholders
+## Automated Workflow
 
-Before using these files, replace the placeholders below:
+This automation has been integrated into the main Terraform configuration. Follow these steps:
 
-- `<account-id>`
-- `<cluster-name>`
-- `<oidc-provider>`
-- `<region>`
+### 1. Deploy infrastructure with Terraform
 
-If you decide to rename the namespace or ServiceAccount, also update:
-- namespace references in all manifests
-- the ServiceAccount name in `trust-policy.json`
-- the role annotation in `serviceaccount.yaml`
-
-## Example workflow
-
-### 1. Discover the cluster OIDC issuer
+From the project root directory:
 
 ```bash
-OIDC_ISSUER=$(oc get authentication cluster \
-  -o jsonpath='{.spec.serviceAccountIssuer}')
-OIDC_PROVIDER=${OIDC_ISSUER#https://}
-echo "$OIDC_PROVIDER"
-````
-
-The original write-up uses the cluster authentication object and strips the `https://` prefix because IAM expects the bare provider host/path. 
-
-### 2. Create the IAM policy
-
-Edit `iam-policy.json` and replace `<cluster-name>`, then create it:
-
-```bash
-aws iam create-policy \
-  --policy-name eni-srcdst-disable \
-  --policy-document file://iam-policy.json
+terraform apply
 ```
 
-The policy is intended to be scoped by the `kubernetes.io/cluster/<cluster-name>=owned` ENI tag. 
+This creates:
+- ROSA HCP cluster with VPC Route Server
+- IAM policy scoped to ENIs tagged `kubernetes.io/cluster/<cluster-name>=owned`
+- IAM role with OIDC trust for the `eni-srcdst-disable` ServiceAccount
+- All networking and BGP resources
 
-### 3. Create the IAM role and attach the policy
+The IAM resources are defined in `../../eni-srcdst-iam.tf` and automatically reference the ROSA cluster's OIDC provider.
 
-Edit `trust-policy.json` and replace:
-
-* `<account-id>`
-* `<oidc-provider>`
-
-Then create the role and attach the policy:
-
-```bash
-aws iam create-role \
-  --role-name eni-srcdst-disable \
-  --assume-role-policy-document file://trust-policy.json
-
-aws iam attach-role-policy \
-  --role-name eni-srcdst-disable \
-  --policy-arn arn:aws:iam::<account-id>:policy/eni-srcdst-disable
-```
-
-The trust policy in the write-up uses `sts:AssumeRoleWithWebIdentity` and the audience `openshift`. 
-
-### 4. Apply the Kubernetes manifests
+### 2. Log into the ROSA cluster
 
 ```bash
-oc apply -f namespace.yaml
-oc apply -f serviceaccount.yaml
-oc apply -f daemonset.yaml
+oc login $(terraform output -raw rosa_api_url) \
+  -u cluster-admin \
+  -p $(terraform output -raw rosa_cluster_admin_password)
 ```
 
-### 5. Grant the `hostnetwork` SCC
+### 3. Deploy the ENI automation DaemonSet
+
+Run the automated deployment script:
 
 ```bash
-oc adm policy add-scc-to-user hostnetwork \
-  -z eni-srcdst-disable \
-  -n eni-srcdst-disable
+./experimental/lifecycle-srcdest-check/deploy.sh
 ```
 
-The original write-up uses the `hostnetwork` SCC rather than `privileged`. 
+The script automatically:
+1. Validates prerequisites (oc login, terraform state)
+2. Retrieves IAM role ARN and AWS region from Terraform outputs
+3. Substitutes values into Kubernetes manifests
+4. Applies namespace, ServiceAccount, and DaemonSet
+5. Grants the `hostnetwork` SCC to the ServiceAccount
+6. Displays deployment status and verification instructions 
 
 ## Verification
 
-Check that the DaemonSet pods are running:
+### Check DaemonSet Status
+
+Verify the DaemonSet is running on all worker nodes (should have 3 pods for 3 router nodes):
 
 ```bash
+oc get daemonset -n eni-srcdst-disable
 oc get pods -n eni-srcdst-disable -o wide
 ```
 
-Then confirm Src/Dst check is disabled for a target ENI:
+### Check Pod Logs
+
+View logs from a DaemonSet pod to confirm successful ENI modification:
 
 ```bash
+oc logs -n eni-srcdst-disable -l app=eni-srcdst-disable -c disable-srcdst
+```
+
+Expected output should show: `Disabling SrcDst check on eni-XXXXXXXXX`
+
+### Verify Source/Destination Check is Disabled
+
+Get an ENI ID from a worker node and verify the setting:
+
+```bash
+NODE_IP=$(oc get nodes -l node-role.kubernetes.io/worker -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+ENI_ID=$(aws ec2 describe-network-interfaces \
+  --filters Name=private-ip-address,Values=$NODE_IP \
+  --query 'NetworkInterfaces[0].NetworkInterfaceId' \
+  --output text)
+
 aws ec2 describe-network-interfaces \
-  --network-interface-ids <eni-id> \
+  --network-interface-ids $ENI_ID \
   --query 'NetworkInterfaces[0].SourceDestCheck'
 ```
 
-Expected result:
+Expected result: `false` 
 
-```text
-false
-```
+## Complete the BGP Setup
 
-These are the same basic verification steps shown in the write-up. 
-
-## Optional: enable OVN route advertisements and FRR
-
-Once Src/Dst check is disabled, the write-up suggests patching the network operator like this:
+After the ENI automation is deployed, continue with the BGP and CUDN configuration from the main project:
 
 ```bash
-oc patch network.operator.openshift.io/cluster --type=merge -p '{
-  "spec": {
-    "defaultNetwork": {
-      "ovnKubernetesConfig": {
-        "routeAdvertisements": "Enabled"
-      }
-    },
-    "additionalRoutingCapabilities": {
-      "providers": ["FRR"]
-    }
-  }
-}'
+# Configure FRR for BGP peering (waits for router nodes to be ready)
+./oc-cudn-run1.sh
+
+# Apply CUDN and route advertisement configs
+oc apply -f yamls/
 ```
 
-It also suggests checking that the CRD exposes the relevant fields before patching. 
+The `oc-cudn-run1.sh` script handles:
+- Enabling OVN route advertisements
+- Enabling FRR routing capabilities
+- Configuring BGP peering between router nodes and VPC Route Server endpoints
+
+See the main project [CLAUDE.md](../../CLAUDE.md) for complete deployment instructions. 
 
 ## Known gaps / future work
 

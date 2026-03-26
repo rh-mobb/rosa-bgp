@@ -22,11 +22,11 @@ spec:
           image: public.ecr.aws/aws-cli/aws-cli:latest
           env:
             - name: AWS_ROLE_ARN
-              value: arn:aws:iam::<account-id>:role/eni-srcdst-disable
+              value: ${IAM_ROLE_ARN}
             - name: AWS_WEB_IDENTITY_TOKEN_FILE
               value: /var/run/secrets/openshift/serviceaccount/token
             - name: AWS_DEFAULT_REGION
-              value: <region>
+              value: ${AWS_REGION}
             - name: HOME
               value: /tmp
           command:
