@@ -4,7 +4,7 @@ module "rosa-vpc" {
   name = "${var.owner}${var.project_id}-vpc1-rosa"
   cidr = var.vpc1-rosa_cidr
 
-  azs             = ["${var.aws_region}a", "${var.aws_region}b", "${var.aws_region}c"]
+  azs = length(var.azs) > 0 ? var.azs : ["${var.aws_region}a", "${var.aws_region}b", "${var.aws_region}c"]
   private_subnets = var.vpc1-rosa_private_subnets
   public_subnets  = var.vpc1-rosa_public_subnets
 

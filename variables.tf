@@ -61,3 +61,7 @@ variable "tags" {
     default = {}
 }
 
+variable "azs" {
+  type        = list(string)
+  default     = []
+}
