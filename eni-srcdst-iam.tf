@@ -5,7 +5,7 @@
 # Data source to get OIDC provider ARN from the ROSA cluster
 # The ROSA HCP module creates the OIDC provider automatically
 data "aws_iam_openid_connect_provider" "rosa_oidc" {
-  url = module.hcp.oidc_endpoint_url
+  url = "https://${module.hcp.oidc_endpoint_url}"
 }
 
 # IAM Policy: Allow modifying network interface attributes for cluster-owned ENIs
@@ -24,7 +24,7 @@ resource "aws_iam_policy" "eni_srcdst_disable" {
         Resource = "*"
         Condition = {
           StringEquals = {
-            "ec2:ResourceTag/kubernetes.io/cluster/${var.rosa_cluster_name}" = "owned"
+            "ec2:ResourceTag/kubernetes.io/cluster/${module.hcp.cluster_id}" = "owned"
           }
         }
       }
