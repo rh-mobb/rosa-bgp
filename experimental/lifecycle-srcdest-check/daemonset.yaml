@@ -21,10 +21,6 @@ spec:
         - name: disable-srcdst
           image: public.ecr.aws/aws-cli/aws-cli:latest
           env:
-            - name: AWS_ROLE_ARN
-              value: ${IAM_ROLE_ARN}
-            - name: AWS_WEB_IDENTITY_TOKEN_FILE
-              value: /var/run/secrets/openshift/serviceaccount/token
             - name: AWS_DEFAULT_REGION
               value: ${AWS_REGION}
             - name: HOME
@@ -44,18 +40,6 @@ spec:
               aws ec2 modify-network-interface-attribute \
                 --network-interface-id "$ENI" \
                 --no-source-dest-check
-          volumeMounts:
-            - name: bound-sa-token
-              mountPath: /var/run/secrets/openshift/serviceaccount
-              readOnly: true
       containers:
         - name: pause
           image: registry.k8s.io/pause:3.9
-      volumes:
-        - name: bound-sa-token
-          projected:
-            sources:
-              - serviceAccountToken:
-                  audience: openshift
-                  expirationSeconds: 3600
-                  path: token

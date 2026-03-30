@@ -49,7 +49,6 @@ fi
 
 AWS_REGION=$(terraform output -raw eni_srcdst_aws_region 2>/dev/null || echo "$AWS_DEFAULT_REGION")
 if [ -z "$AWS_REGION" ]; then
-if [ -z "$AWS_REGION" ]; then
     echo "Error: Could not determine AWS region."
     echo "Please set AWS_DEFAULT_REGION or ensure terraform outputs include aws_region."
     exit 1
@@ -69,13 +68,13 @@ echo ""
 echo "Creating ServiceAccount..."
 export IAM_ROLE_ARN
 export AWS_REGION
-envsubst < "$SCRIPT_DIR/serviceaccount.yaml" | oc apply -f -
+envsubst '$IAM_ROLE_ARN $AWS_REGION' < "$SCRIPT_DIR/serviceaccount.yaml" | oc apply -f -
 echo "✓ ServiceAccount created"
 echo ""
 
 # Apply DaemonSet with substituted values
 echo "Creating DaemonSet..."
-envsubst < "$SCRIPT_DIR/daemonset.yaml" | oc apply -f -
+envsubst '$IAM_ROLE_ARN $AWS_REGION' < "$SCRIPT_DIR/daemonset.yaml" | oc apply -f -
 echo "✓ DaemonSet created"
 echo ""
 
