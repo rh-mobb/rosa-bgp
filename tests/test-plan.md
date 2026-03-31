@@ -72,7 +72,8 @@
         * EC2 instance in same VPC to CUDN VM - expected to succeed
         * EC2 instance in different VPC to transit gateway to same VPC to CUDN VM - expected to succeed
 * eni-srcdst-disable DaemonSet should configure new nodes to be traffic next hop
-    * Connectivity from EC2 to CUDN VM and CUDN VM to EC2 after DaemonSet is instantiated on cluster that has not had `disable_src_dst_check.sh` run - expected to succeed
+    * Connectivity from EC2 to CUDN VM and CUDN VM to EC2 after DaemonSet is instantiated on cluster that has not had `disable_src_dst_check.sh` run - expected to succeed - PASS
     * Connectivity from EC2 to CUDN VM and CUDN VM to EC2 should be maintained during all of the following scenarios
-        * MachinePool scale up - expected to succeed
+        * MachinePool scale up - expected to succeed - PASS
         * Cluster upgrade - expected to succeed
+* Route Server gets routes for new nodes - expected to succeed
