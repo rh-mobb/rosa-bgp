@@ -20,18 +20,18 @@ spec:
       tolerations:
         - operator: Exists
       initContainers:
-      - name: install-kubectl
-        image: alpine:latest
+      - name: install-oc
+        image: registry.access.redhat.com/ubi9/ubi-minimal:latest
         command: ["/bin/sh", "-c"]
         args:
         - |
-          echo "Downloading kubectl..."
-          wget -O /kubectl-bin/kubectl https://dl.k8s.io/release/v1.31.0/bin/linux/amd64/kubectl
-          chmod +x /kubectl-bin/kubectl
-          echo "kubectl downloaded successfully"
+          echo "Downloading oc client..."
+          curl -sL https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz | tar -xz -C /oc-bin oc
+          chmod +x /oc-bin/oc
+          echo "oc client downloaded successfully"
         volumeMounts:
-        - name: kubectl-bin
-          mountPath: /kubectl-bin
+        - name: oc-bin
+          mountPath: /oc-bin
       containers:
       - name: agent
         image: amazon/aws-cli:latest
@@ -49,8 +49,8 @@ spec:
         volumeMounts:
         - name: config
           mountPath: /config
-        - name: kubectl-bin
-          mountPath: /kubectl-bin
+        - name: oc-bin
+          mountPath: /oc-bin
         - name: host-bin
           mountPath: /host/usr/sbin
           readOnly: true
@@ -63,8 +63,8 @@ spec:
           echo "Node: $NODE_NAME"
           echo "Region: $AWS_DEFAULT_REGION"
 
-          # Add kubectl to PATH
-          export PATH=/kubectl-bin:$PATH
+          # Add oc to PATH
+          export PATH=/oc-bin:$PATH
 
           # Install iproute2 for ip command
           echo "Installing iproute2..."
@@ -72,7 +72,7 @@ spec:
 
           # Get BGP router subnet from node label
           echo "Getting BGP router subnet from node labels..."
-          BGP_ROUTER_SUBNET=$(kubectl get node $NODE_NAME -o jsonpath='{.metadata.labels.bgp_router_subnet}')
+          BGP_ROUTER_SUBNET=$(oc get node $NODE_NAME -o jsonpath='{.metadata.labels.bgp_router_subnet}')
           if [ -z "$BGP_ROUTER_SUBNET" ]; then
             echo "Error: Could not determine bgp_router_subnet for node $NODE_NAME"
             exit 1
@@ -104,7 +104,7 @@ spec:
           echo "=== Starting main loop ==="
           while true; do
             # Try to create lease if it doesn't exist
-            if ! kubectl get lease "$LEASE_NAME" -n bgp-static-ip &>/dev/null; then
+            if ! oc get lease "$LEASE_NAME" -n bgp-static-ip &>/dev/null; then
               echo "Creating lease $LEASE_NAME"
               echo "apiVersion: coordination.k8s.io/v1
           kind: Lease
@@ -113,15 +113,15 @@ spec:
             namespace: bgp-static-ip
           spec:
             holderIdentity: $NODE_NAME
-            leaseDurationSeconds: 60" | kubectl apply -f -
+            leaseDurationSeconds: 60" | oc apply -f -
             fi
 
             # Try to update/acquire lease
             TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.000000Z")
-            kubectl patch lease "$LEASE_NAME" -n bgp-static-ip --type=merge -p "{\"spec\":{\"holderIdentity\":\"$NODE_NAME\",\"leaseDurationSeconds\":60,\"renewTime\":\"$TIMESTAMP\"}}" 2>/dev/null || true
+            oc patch lease "$LEASE_NAME" -n bgp-static-ip --type=merge -p "{\"spec\":{\"holderIdentity\":\"$NODE_NAME\",\"leaseDurationSeconds\":60,\"renewTime\":\"$TIMESTAMP\"}}" 2>/dev/null || true
 
             # Check if we hold the lease
-            HOLDER=$(kubectl get lease "$LEASE_NAME" -n bgp-static-ip -o jsonpath='{.spec.holderIdentity}' 2>/dev/null || echo "")
+            HOLDER=$(oc get lease "$LEASE_NAME" -n bgp-static-ip -o jsonpath='{.spec.holderIdentity}' 2>/dev/null || echo "")
 
             if [[ "$HOLDER" == "$NODE_NAME" ]]; then
               echo "[$(date -u +%H:%M:%S)] Leader for subnet $BGP_ROUTER_SUBNET - ensuring secondary IP attached"
@@ -178,7 +178,7 @@ spec:
       - name: config
         configMap:
           name: bgp-static-ip-config
-      - name: kubectl-bin
+      - name: oc-bin
         emptyDir: {}
       - name: host-bin
         hostPath:
