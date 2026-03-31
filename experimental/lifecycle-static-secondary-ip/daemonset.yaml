@@ -25,6 +25,8 @@ spec:
         command: ["/bin/sh", "-c"]
         args:
         - |
+          echo "Installing tar..."
+          microdnf install -y tar gzip &>/dev/null
           echo "Downloading oc client..."
           curl -sL https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz | tar -xz -C /oc-bin oc
           chmod +x /oc-bin/oc

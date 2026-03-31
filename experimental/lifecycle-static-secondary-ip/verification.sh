@@ -62,7 +62,7 @@ for i in 1 2 3; do
 
   ENI_ID=$(aws ec2 describe-network-interfaces \
     --region $AWS_REGION \
-    --filters Name=private-ip-address,Values=$NODE_IP \
+    --filters Name=private-ip-address,Values=$NODE_IP Name=status,Values=in-use \
     --query 'NetworkInterfaces[0].NetworkInterfaceId' \
     --output text)
   echo "  ENI ID: $ENI_ID"
