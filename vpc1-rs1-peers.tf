@@ -1,55 +1,21 @@
-data "external" "wait_for_router1" {
-  program = ["bash", "${path.module}/scripts/wait_for_instance.sh"]
-  depends_on = [module.hcp]
-
-  query = {
-    tag_key   = "bgp_router_subnet"
-    tag_value = "1"
-    region    = var.aws_region
-    timeout_s = 3600
-    sleep_s   = 10
-  }
-}
-data "external" "wait_for_router2" {
-  program = ["bash", "${path.module}/scripts/wait_for_instance.sh"]
-  depends_on = [module.hcp]
-
-  query = {
-    tag_key   = "bgp_router_subnet"
-    tag_value = "2"
-    region    = var.aws_region
-    timeout_s = 3600
-    sleep_s   = 10
-  }
-}
-data "external" "wait_for_router3" {
-  program = ["bash", "${path.module}/scripts/wait_for_instance.sh"]
-  depends_on = [module.hcp]
-
-  query = {
-    tag_key   = "bgp_router_subnet"
-    tag_value = "3"
-    region    = var.aws_region
-    timeout_s = 3600
-    sleep_s   = 10
-  }
-}
-
-
-
-# Use the found instance id in other resources
+# BGP router IPs are now static secondary IPs defined in vpc1-bgp-secondary-ips.tf
+# These are assigned to router node ENIs by the lifecycle-static-secondary-ip controller
 locals {
-  router1_ip = data.external.wait_for_router1.result.private_ip
-  router2_ip = data.external.wait_for_router2.result.private_ip
-  router3_ip = data.external.wait_for_router3.result.private_ip
+  router1_ip = local.bgp_secondary_ip_subnet1
+  router2_ip = local.bgp_secondary_ip_subnet2
+  router3_ip = local.bgp_secondary_ip_subnet3
 }
 
 # create route server peers for router worker node in subnet1
 
 resource "aws_vpc_route_server_peer" "subnet1_ep1_rosa_router1" {
   route_server_endpoint_id = aws_vpc_route_server_endpoint.vpc1-rs1-subnet1-ep1.route_server_endpoint_id
-  peer_address = data.external.wait_for_router1.result.private_ip
-  depends_on = [module.hcp]
+  peer_address = local.router1_ip
+  depends_on = [
+    aws_ec2_subnet_cidr_reservation.bgp_router_subnet1,
+    aws_ec2_subnet_cidr_reservation.bgp_router_subnet2,
+    aws_ec2_subnet_cidr_reservation.bgp_router_subnet3
+  ]
   bgp_options {
     peer_asn = var.rosa_bgp_asn
     peer_liveness_detection = "bgp-keepalive" #need to check why bfd isnt working
@@ -63,8 +29,12 @@ resource "aws_vpc_route_server_peer" "subnet1_ep1_rosa_router1" {
 }
 resource "aws_vpc_route_server_peer" "subnet1_ep2_rosa_router1" {
   route_server_endpoint_id = aws_vpc_route_server_endpoint.vpc1-rs1-subnet1-ep2.route_server_endpoint_id
-  peer_address = data.external.wait_for_router1.result.private_ip
-  depends_on = [module.hcp]
+  peer_address = local.router1_ip
+  depends_on = [
+    aws_ec2_subnet_cidr_reservation.bgp_router_subnet1,
+    aws_ec2_subnet_cidr_reservation.bgp_router_subnet2,
+    aws_ec2_subnet_cidr_reservation.bgp_router_subnet3
+  ]
   bgp_options {
     peer_asn = var.rosa_bgp_asn
     peer_liveness_detection = "bgp-keepalive" #need to check why bfd isnt working
@@ -79,8 +49,12 @@ resource "aws_vpc_route_server_peer" "subnet1_ep2_rosa_router1" {
 
 resource "aws_vpc_route_server_peer" "subnet2_ep1_rosa_router2" {
   route_server_endpoint_id = aws_vpc_route_server_endpoint.vpc1-rs1-subnet2-ep1.route_server_endpoint_id
-  peer_address = data.external.wait_for_router2.result.private_ip
-  depends_on = [module.hcp]
+  peer_address = local.router2_ip
+  depends_on = [
+    aws_ec2_subnet_cidr_reservation.bgp_router_subnet1,
+    aws_ec2_subnet_cidr_reservation.bgp_router_subnet2,
+    aws_ec2_subnet_cidr_reservation.bgp_router_subnet3
+  ]
   bgp_options {
     peer_asn = var.rosa_bgp_asn
     peer_liveness_detection = "bgp-keepalive" #need to check why bfd isnt working
@@ -94,8 +68,12 @@ resource "aws_vpc_route_server_peer" "subnet2_ep1_rosa_router2" {
 }
 resource "aws_vpc_route_server_peer" "subnet2_ep2_rosa_router2" {
   route_server_endpoint_id = aws_vpc_route_server_endpoint.vpc1-rs1-subnet2-ep2.route_server_endpoint_id
-  peer_address = data.external.wait_for_router2.result.private_ip
-  depends_on = [module.hcp]
+  peer_address = local.router2_ip
+  depends_on = [
+    aws_ec2_subnet_cidr_reservation.bgp_router_subnet1,
+    aws_ec2_subnet_cidr_reservation.bgp_router_subnet2,
+    aws_ec2_subnet_cidr_reservation.bgp_router_subnet3
+  ]
   bgp_options {
     peer_asn = var.rosa_bgp_asn
     peer_liveness_detection = "bgp-keepalive" #need to check why bfd isnt working
@@ -110,8 +88,12 @@ resource "aws_vpc_route_server_peer" "subnet2_ep2_rosa_router2" {
 
 resource "aws_vpc_route_server_peer" "subnet3_ep1_rosa_router3" {
   route_server_endpoint_id = aws_vpc_route_server_endpoint.vpc1-rs1-subnet3-ep1.route_server_endpoint_id
-  peer_address = data.external.wait_for_router3.result.private_ip
-  depends_on = [module.hcp]
+  peer_address = local.router3_ip
+  depends_on = [
+    aws_ec2_subnet_cidr_reservation.bgp_router_subnet1,
+    aws_ec2_subnet_cidr_reservation.bgp_router_subnet2,
+    aws_ec2_subnet_cidr_reservation.bgp_router_subnet3
+  ]
   bgp_options {
     peer_asn = var.rosa_bgp_asn
     peer_liveness_detection = "bgp-keepalive" #need to check why bfd isnt working
@@ -125,8 +107,12 @@ resource "aws_vpc_route_server_peer" "subnet3_ep1_rosa_router3" {
 }
 resource "aws_vpc_route_server_peer" "subnet3_ep2_rosa_router3" {
   route_server_endpoint_id = aws_vpc_route_server_endpoint.vpc1-rs1-subnet3-ep2.route_server_endpoint_id
-  peer_address = data.external.wait_for_router3.result.private_ip
-  depends_on = [module.hcp]
+  peer_address = local.router3_ip
+  depends_on = [
+    aws_ec2_subnet_cidr_reservation.bgp_router_subnet1,
+    aws_ec2_subnet_cidr_reservation.bgp_router_subnet2,
+    aws_ec2_subnet_cidr_reservation.bgp_router_subnet3
+  ]
   bgp_options {
     peer_asn = var.rosa_bgp_asn
     peer_liveness_detection = "bgp-keepalive" #need to check why bfd isnt working

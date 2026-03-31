@@ -1,0 +1,186 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: static-ip-agent
+  namespace: bgp-static-ip
+spec:
+  selector:
+    matchLabels:
+      app: static-ip-agent
+  template:
+    metadata:
+      labels:
+        app: static-ip-agent
+    spec:
+      serviceAccountName: bgp-static-ip
+      hostNetwork: true
+      priorityClassName: system-node-critical
+      nodeSelector:
+        bgp_router: "true"
+      tolerations:
+        - operator: Exists
+      initContainers:
+      - name: install-kubectl
+        image: alpine:latest
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          echo "Downloading kubectl..."
+          wget -O /kubectl-bin/kubectl https://dl.k8s.io/release/v1.31.0/bin/linux/amd64/kubectl
+          chmod +x /kubectl-bin/kubectl
+          echo "kubectl downloaded successfully"
+        volumeMounts:
+        - name: kubectl-bin
+          mountPath: /kubectl-bin
+      containers:
+      - name: agent
+        image: amazon/aws-cli:latest
+        securityContext:
+          privileged: true
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: AWS_DEFAULT_REGION
+          value: ${AWS_REGION}
+        - name: HOME
+          value: /tmp
+        volumeMounts:
+        - name: config
+          mountPath: /config
+        - name: kubectl-bin
+          mountPath: /kubectl-bin
+        - name: host-bin
+          mountPath: /host/usr/sbin
+          readOnly: true
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          set -e
+
+          echo "=== BGP Static IP Agent Starting ==="
+          echo "Node: $NODE_NAME"
+          echo "Region: $AWS_DEFAULT_REGION"
+
+          # Add kubectl to PATH
+          export PATH=/kubectl-bin:$PATH
+
+          # Install iproute2 for ip command
+          echo "Installing iproute2..."
+          yum install -y iproute &>/dev/null || echo "Failed to install iproute2, trying to continue..."
+
+          # Get BGP router subnet from node label
+          echo "Getting BGP router subnet from node labels..."
+          BGP_ROUTER_SUBNET=$(kubectl get node $NODE_NAME -o jsonpath='{.metadata.labels.bgp_router_subnet}')
+          if [ -z "$BGP_ROUTER_SUBNET" ]; then
+            echo "Error: Could not determine bgp_router_subnet for node $NODE_NAME"
+            exit 1
+          fi
+          echo "Subnet: $BGP_ROUTER_SUBNET"
+
+          # Read configuration
+          SECONDARY_IP=$(cat /config/subnet${BGP_ROUTER_SUBNET}_ip)
+          echo "Secondary IP for this subnet: $SECONDARY_IP"
+
+          # Get node metadata from IMDS using IMDSv2
+          echo "Fetching node metadata from IMDS..."
+          TOKEN=$(curl -sf -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 60" \
+            http://169.254.169.254/latest/api/token)
+          MAC=$(curl -sf -H "X-aws-ec2-metadata-token: $TOKEN" \
+            http://169.254.169.254/latest/meta-data/network/interfaces/macs/ | head -1 | tr -d '/')
+          PRIMARY_ENI=$(curl -sf -H "X-aws-ec2-metadata-token: $TOKEN" \
+            http://169.254.169.254/latest/meta-data/network/interfaces/macs/${MAC}/interface-id)
+
+          echo "Primary ENI: $PRIMARY_ENI"
+
+          # Grace period to prevent flapping on new node startup
+          echo "Waiting 30s grace period..."
+          sleep 30
+
+          # Lease name
+          LEASE_NAME="bgp-static-ip-subnet${BGP_ROUTER_SUBNET}"
+
+          echo "=== Starting main loop ==="
+          while true; do
+            # Try to create lease if it doesn't exist
+            if ! kubectl get lease "$LEASE_NAME" -n bgp-static-ip &>/dev/null; then
+              echo "Creating lease $LEASE_NAME"
+              echo "apiVersion: coordination.k8s.io/v1
+          kind: Lease
+          metadata:
+            name: $LEASE_NAME
+            namespace: bgp-static-ip
+          spec:
+            holderIdentity: $NODE_NAME
+            leaseDurationSeconds: 60" | kubectl apply -f -
+            fi
+
+            # Try to update/acquire lease
+            TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.000000Z")
+            kubectl patch lease "$LEASE_NAME" -n bgp-static-ip --type=merge -p "{\"spec\":{\"holderIdentity\":\"$NODE_NAME\",\"leaseDurationSeconds\":60,\"renewTime\":\"$TIMESTAMP\"}}" 2>/dev/null || true
+
+            # Check if we hold the lease
+            HOLDER=$(kubectl get lease "$LEASE_NAME" -n bgp-static-ip -o jsonpath='{.spec.holderIdentity}' 2>/dev/null || echo "")
+
+            if [[ "$HOLDER" == "$NODE_NAME" ]]; then
+              echo "[$(date -u +%H:%M:%S)] Leader for subnet $BGP_ROUTER_SUBNET - ensuring secondary IP attached"
+
+              # Check if IP is attached to ENI
+              CURRENT_IPS=$(aws ec2 describe-network-interfaces \
+                --region $AWS_DEFAULT_REGION \
+                --network-interface-ids $PRIMARY_ENI \
+                --query 'NetworkInterfaces[0].PrivateIpAddresses[*].PrivateIpAddress' \
+                --output text)
+
+              if ! echo "$CURRENT_IPS" | grep -q "$SECONDARY_IP"; then
+                echo "[$(date -u +%H:%M:%S)] Attaching secondary IP $SECONDARY_IP to $PRIMARY_ENI"
+                aws ec2 assign-private-ip-addresses \
+                  --region $AWS_DEFAULT_REGION \
+                  --network-interface-id $PRIMARY_ENI \
+                  --private-ip-addresses $SECONDARY_IP \
+                  --allow-reassignment && echo "[$(date -u +%H:%M:%S)] Secondary IP attached to ENI"
+              fi
+
+              # Ensure IP is configured on br-ex interface
+              if ! ip addr show br-ex 2>/dev/null | grep -q "$SECONDARY_IP"; then
+                echo "[$(date -u +%H:%M:%S)] Adding $SECONDARY_IP to br-ex interface"
+                ip addr add ${SECONDARY_IP}/24 dev br-ex && echo "[$(date -u +%H:%M:%S)] IP configured on interface"
+              fi
+            else
+              echo "[$(date -u +%H:%M:%S)] Not leader (holder: $HOLDER) - ensuring secondary IP detached"
+
+              # Check if IP is attached (shouldn't be, but cleanup just in case)
+              CURRENT_IPS=$(aws ec2 describe-network-interfaces \
+                --region $AWS_DEFAULT_REGION \
+                --network-interface-ids $PRIMARY_ENI \
+                --query 'NetworkInterfaces[0].PrivateIpAddresses[*].PrivateIpAddress' \
+                --output text)
+
+              if echo "$CURRENT_IPS" | grep -q "$SECONDARY_IP"; then
+                echo "[$(date -u +%H:%M:%S)] Detaching secondary IP (we are not leader)"
+                # Remove from interface first
+                if ip addr show br-ex | grep -q "$SECONDARY_IP"; then
+                  ip addr del ${SECONDARY_IP}/24 dev br-ex 2>/dev/null || true
+                fi
+                # Then detach from ENI
+                aws ec2 unassign-private-ip-addresses \
+                  --region $AWS_DEFAULT_REGION \
+                  --network-interface-id $PRIMARY_ENI \
+                  --private-ip-addresses $SECONDARY_IP 2>/dev/null || true
+              fi
+            fi
+
+            # Renew every 15 seconds
+            sleep 15
+          done
+      volumes:
+      - name: config
+        configMap:
+          name: bgp-static-ip-config
+      - name: kubectl-bin
+        emptyDir: {}
+      - name: host-bin
+        hostPath:
+          path: /usr/sbin
+          type: Directory
