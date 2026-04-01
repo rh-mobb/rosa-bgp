@@ -48,6 +48,25 @@ resource "aws_iam_policy" "eni_srcdst_disable" {
         Resource = "*"
         # Note: Route Server peers don't support resource-level permissions,
         # but we tag them with cluster ID for identification
+      },
+      {
+        # BGP peer deletion for cleanup of stale peers
+        Effect = "Allow"
+        Action = [
+          "ec2:DeleteRouteServerPeer"
+        ]
+        Resource = "*"
+        # Note: Script validates tags before deletion; AWS will support
+        # tag-based conditions for peer deletion in future versions
+      },
+      {
+        # EC2 instance discovery for cleanup (identifying active router nodes)
+        Effect = "Allow"
+        Action = [
+          "ec2:DescribeInstances"
+        ]
+        Resource = "*"
+        # Note: DescribeInstances doesn't support resource-level permissions
       }
     ]
   })

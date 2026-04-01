@@ -111,6 +111,12 @@ oc adm policy add-scc-to-user hostnetwork \
 echo "✓ SCC granted"
 echo ""
 
+# Apply CronJob with substituted values
+echo "Creating BGP Peer Cleanup CronJob..."
+envsubst '$AWS_REGION $CLUSTER_ID' < "$SCRIPT_DIR/cleanup-cronjob.yaml" | oc apply -f -
+echo "✓ CronJob created"
+echo ""
+
 # Wait for DaemonSet to be ready
 echo "Waiting for DaemonSet pods to start..."
 sleep 5
@@ -127,6 +133,10 @@ echo "Pods:"
 oc get pods -n eni-srcdst-disable -o wide
 
 echo ""
+echo "CronJob:"
+oc get cronjob -n eni-srcdst-disable
+
+echo ""
 echo "=== Deployment Complete ==="
 echo ""
 echo "To verify source/destination check is disabled on worker ENIs:"
@@ -138,6 +148,17 @@ echo "2. Check the SourceDestCheck attribute:"
 echo "   aws ec2 describe-network-interfaces --network-interface-ids \$ENI_ID --query 'NetworkInterfaces[0].SourceDestCheck'"
 echo ""
 echo "Expected result: false"
+echo ""
+echo "To verify BGP peer cleanup CronJob:"
+echo "1. Check CronJob status:"
+echo "   oc get cronjob bgp-peer-cleanup -n eni-srcdst-disable"
+echo ""
+echo "2. View recent cleanup job logs:"
+echo "   LATEST_JOB=\$(oc get jobs -n eni-srcdst-disable -l app=bgp-peer-cleanup --sort-by=.status.startTime -o jsonpath='{.items[-1].metadata.name}')"
+echo "   oc logs job/\$LATEST_JOB -n eni-srcdst-disable"
+echo ""
+echo "3. Manually trigger cleanup (for testing):"
+echo "   oc create job --from=cronjob/bgp-peer-cleanup manual-cleanup -n eni-srcdst-disable"
 echo ""
 
 # Check pod logs for any errors
