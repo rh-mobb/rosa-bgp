@@ -6,15 +6,21 @@
         * CUDN VM A/B to EC2 instance in same VPC - expected to succeed - PASS
         * CUDN VM A/B to transit gateway to EC2 instance in external VPC - expected to succeed - PASS
         * CUDN VM A/B to kapi - expected to succeed - PASS
-            * ping to public and service IP failed
-            * TCP/HTTPS to kapi succeeded
-            * /version and /readyz returned 200
-            * GET / returned 403 as system:anonymous, which is expected for unauthenticated access
+            * Public API hostname tested: `api.ds-bgp.0w32.p3.openshiftapps.com`
+            * Kubernetes service ClusterIP tested: `172.30.0.1`
+            * `ping` to the public API hostname and Kubernetes service ClusterIP failed
+            * TCP/HTTPS connectivity to kapi succeeded
+            * `/version` and `/readyz` returned 200
+            * `GET /` returned 403 as `system:anonymous`, which is expected for unauthenticated access
         * CUDN VM A/B to kube dns - expected to succeed - PARTIAL
-            * VM DNS server is 172.30.0.10
-            * public API hostname resolved successfully - PASS
-            * TCP/53 connectivity to 172.30.0.10 succeeded - PASS
-            * kubernetes.default.svc.cluster.local did not resolve - FAIL
+            * VM DNS server is `172.30.0.10`
+            * reachability to DNS server:
+                * `ping 172.30.0.10` - FAIL
+                * `nc -vz 172.30.0.10 53` - PASS
+            * name resolution:
+                * `api.ds-bgp.0w32.p3.openshiftapps.com` - PASS
+                * `kubernetes.default.svc.cluster.local` - FAIL from VM
+                    * Note: only this one cluster-internal service name was tested; this does not prove all cluster-internal names fail
         * CUDN VM A/B to port on worker node host API service - needs clarification
         * CUDN A VM to CUDN A VM (on the same node) - expected to succeed
         * CUDN A VM to CUDN A VM (on a different node) - expected to succeed - PASS
