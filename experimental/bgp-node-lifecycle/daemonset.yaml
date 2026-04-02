@@ -135,11 +135,14 @@ spec:
 
                 echo "Creating BGP peer: endpoint=$ENDPOINT_ID ip=$NODE_IP asn=$ROSA_BGP_ASN"
 
+                # Add creation timestamp for age-based cleanup safety
+                CREATED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
                 aws ec2 create-route-server-peer \
                   --route-server-endpoint-id "$ENDPOINT_ID" \
                   --peer-address "$NODE_IP" \
                   --bgp-options "PeerAsn=${ROSA_BGP_ASN},PeerLivenessDetection=bgp-keepalive" \
-                  --tag-specifications "ResourceType=route-server-peer,Tags=[{Key=kubernetes.io/cluster/${CLUSTER_ID},Value=owned},{Key=managed-by,Value=daemonset},{Key=node-ip,Value=${NODE_IP}}]"
+                  --tag-specifications "ResourceType=route-server-peer,Tags=[{Key=kubernetes.io/cluster/${CLUSTER_ID},Value=owned},{Key=managed-by,Value=daemonset},{Key=node-ip,Value=${NODE_IP}},{Key=created-at,Value=${CREATED_AT}}]"
 
                 echo "✓ Created peer for endpoint $ENDPOINT_ID"
               done
