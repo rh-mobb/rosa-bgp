@@ -1,14 +1,15 @@
 #!/bin/bash
-# Deploy ENI source/destination check automation to ROSA cluster
-# This script applies the DaemonSet that automatically disables source/destination
-# checks on worker node ENIs during lifecycle events.
+# Deploy BGP node lifecycle automation to ROSA cluster
+# This script applies the DaemonSet that automatically:
+# 1. Disables source/destination checks on worker node ENIs
+# 2. Creates BGP peer associations with Route Server endpoints
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-echo "=== ENI Source/Destination Check Automation Deployment ==="
+echo "=== BGP Node Lifecycle Automation Deployment ==="
 echo ""
 
 # Check prerequisites
@@ -54,8 +55,29 @@ if [ -z "$AWS_REGION" ]; then
     exit 1
 fi
 
+ROUTE_SERVER_ID=$(terraform output -raw vpc1_route_server_id 2>/dev/null)
+if [ -z "$ROUTE_SERVER_ID" ]; then
+    echo "Error: Could not retrieve Route Server ID from Terraform."
+    exit 1
+fi
+
+ROSA_BGP_ASN=$(terraform output -raw rosa_bgp_asn 2>/dev/null)
+if [ -z "$ROSA_BGP_ASN" ]; then
+    echo "Error: Could not retrieve ROSA BGP ASN from Terraform."
+    exit 1
+fi
+
+CLUSTER_ID=$(terraform output -raw rosa_cluster_id 2>/dev/null)
+if [ -z "$CLUSTER_ID" ]; then
+    echo "Error: Could not retrieve ROSA cluster ID from Terraform."
+    exit 1
+fi
+
 echo "✓ IAM Role ARN: $IAM_ROLE_ARN"
 echo "✓ AWS Region: $AWS_REGION"
+echo "✓ Route Server ID: $ROUTE_SERVER_ID"
+echo "✓ ROSA BGP ASN: $ROSA_BGP_ASN"
+echo "✓ Cluster ID: $CLUSTER_ID"
 echo ""
 
 # Apply namespace
@@ -68,13 +90,16 @@ echo ""
 echo "Creating ServiceAccount..."
 export IAM_ROLE_ARN
 export AWS_REGION
+export ROUTE_SERVER_ID
+export ROSA_BGP_ASN
+export CLUSTER_ID
 envsubst '$IAM_ROLE_ARN $AWS_REGION' < "$SCRIPT_DIR/serviceaccount.yaml" | oc apply -f -
 echo "✓ ServiceAccount created"
 echo ""
 
 # Apply DaemonSet with substituted values
 echo "Creating DaemonSet..."
-envsubst '$IAM_ROLE_ARN $AWS_REGION' < "$SCRIPT_DIR/daemonset.yaml" | oc apply -f -
+envsubst '$IAM_ROLE_ARN $AWS_REGION $ROUTE_SERVER_ID $ROSA_BGP_ASN $CLUSTER_ID' < "$SCRIPT_DIR/daemonset.yaml" | oc apply -f -
 echo "✓ DaemonSet created"
 echo ""
 
@@ -121,6 +146,11 @@ if [ "$POD_COUNT" -gt 0 ]; then
     echo "Recent logs from first pod:"
     FIRST_POD=$(oc get pods -n eni-srcdst-disable -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
     if [ -n "$FIRST_POD" ]; then
+        echo ""
+        echo "--- disable-srcdst init container ---"
         oc logs "$FIRST_POD" -n eni-srcdst-disable -c disable-srcdst 2>/dev/null || echo "(No logs yet or pod still initializing)"
+        echo ""
+        echo "--- create-bgp-peers init container ---"
+        oc logs "$FIRST_POD" -n eni-srcdst-disable -c create-bgp-peers 2>/dev/null || echo "(No logs yet or pod still initializing)"
     fi
 fi

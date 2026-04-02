@@ -9,9 +9,10 @@ data "aws_iam_openid_connect_provider" "rosa_oidc" {
 }
 
 # IAM Policy: Allow modifying network interface attributes for cluster-owned ENIs
+# and managing Route Server peers
 resource "aws_iam_policy" "eni_srcdst_disable" {
   name        = "${var.rosa_cluster_name}-eni-srcdst-disable"
-  description = "Allow disabling source/destination check on ROSA worker ENIs"
+  description = "Allow disabling source/destination check on ROSA worker ENIs and managing Route Server peers"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -27,6 +28,26 @@ resource "aws_iam_policy" "eni_srcdst_disable" {
             "ec2:ResourceTag/kubernetes.io/cluster/${module.hcp.cluster_id}" = "owned"
           }
         }
+      },
+      {
+        # Route Server endpoint discovery
+        Effect = "Allow"
+        Action = [
+          "ec2:DescribeRouteServerEndpoints",
+          "ec2:DescribeRouteServerPeers"
+        ]
+        Resource = "*"
+      },
+      {
+        # BGP peer creation
+        Effect = "Allow"
+        Action = [
+          "ec2:CreateRouteServerPeer",
+          "ec2:CreateTags"
+        ]
+        Resource = "*"
+        # Note: Route Server peers don't support resource-level permissions,
+        # but we tag them with cluster ID for identification
       }
     ]
   })
