@@ -39,7 +39,7 @@ echo ""
 # 2. Get all daemonset-managed peers (exclude already deleted)
 echo "Querying Route Server for managed BGP peers..."
 ALL_PEERS=$(aws ec2 describe-route-server-peers \
-  --query "RouteServerPeers[?Tags[?Key=='managed-by' && Value=='daemonset'] && State!='deleted'].{Id:RouteServerPeerId,Ip:PeerAddress,State:State,Created:CreationTime}" \
+  --query "RouteServerPeers[?Tags[?Key=='managed-by' && Value=='daemonset'] && State!='deleted'].{Id:RouteServerPeerId,Ip:PeerAddress,State:State,Tags:Tags}" \
   --output json)
 
 TOTAL_PEERS=$(echo "$ALL_PEERS" | jq length)
@@ -63,7 +63,9 @@ for peer in $(echo "$ALL_PEERS" | jq -c '.[]'); do
   PEER_ID=$(echo "$peer" | jq -r '.Id')
   PEER_IP=$(echo "$peer" | jq -r '.Ip')
   PEER_STATE=$(echo "$peer" | jq -r '.State')
-  CREATED_TIME=$(echo "$peer" | jq -r '.Created')
+
+  # Read creation timestamp from tag
+  CREATED_TIME=$(echo "$peer" | jq -r '.Tags[] | select(.Key=="created-at") | .Value')
 
   # Check if IP is in active list
   if echo "$ACTIVE_IPS" | grep -qw "$PEER_IP"; then
@@ -72,9 +74,14 @@ for peer in $(echo "$ALL_PEERS" | jq -c '.[]'); do
     continue
   fi
 
-  # Calculate age
-  CREATED_EPOCH=$(date -d "$CREATED_TIME" +%s 2>/dev/null || echo "$NOW_EPOCH")
-  AGE_MINUTES=$(( (NOW_EPOCH - CREATED_EPOCH) / 60 ))
+  # Calculate age from created-at tag
+  if [ -n "$CREATED_TIME" ] && [ "$CREATED_TIME" != "null" ]; then
+    CREATED_EPOCH=$(date -d "$CREATED_TIME" +%s 2>/dev/null || echo "$NOW_EPOCH")
+    AGE_MINUTES=$(( (NOW_EPOCH - CREATED_EPOCH) / 60 ))
+  else
+    # No created-at tag (legacy peer) - treat as very old to allow deletion
+    AGE_MINUTES=999999
+  fi
 
   # Check minimum age
   if [ "$AGE_MINUTES" -lt "$MIN_AGE_MINUTES" ]; then
