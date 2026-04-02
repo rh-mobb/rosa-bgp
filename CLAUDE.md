@@ -106,7 +106,6 @@ oc get userdefinednetworks -A
 ### Helper Scripts
 
 - `scripts/wait_for_instance.sh` - Waits for EC2 instances with specific tags to become available (used as Terraform data source)
-- `scripts/disable_src_dst_check.sh` - Disables source/destination checking on router instances (required for routing)
 - `oc-cudn-run1.sh` - Configures FRR on router nodes to peer with Route Server endpoints
 
 ### OpenShift Configurations
@@ -128,7 +127,7 @@ oc get userdefinednetworks -A
 
 - **Instance Type**: Baremetal (`c5.metal` default) required for proper routing performance
 - **Tags**: Nodes tagged with `bgp_router=true` and `bgp_router_subnet={1-3}`
-- **Source/Dest Check**: Must be disabled (handled by `disable_src_dst_check.sh`)
+- **Source/Dest Check**: Must be disabled (handled by daemonset in cluster)
 - **Security Groups**: Two SGs attached - one allowing RFC1918, one allowing all (for IGW traffic)
 - **Placement**: One node per private subnet/AZ for redundancy
 

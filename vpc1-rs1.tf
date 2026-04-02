@@ -141,3 +141,8 @@ output "vpc1-rs1-asn" {
 output "rosa_bgp_asn" {
   value = var.rosa_bgp_asn
 }
+
+output "vpc1_route_server_id" {
+  description = "Route Server ID for dynamic BGP peer creation"
+  value       = aws_vpc_route_server.vpc1-rs1.route_server_id
+}

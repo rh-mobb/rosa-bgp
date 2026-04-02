@@ -1,0 +1,153 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: eni-srcdst-disable
+  namespace: eni-srcdst-disable
+spec:
+  selector:
+    matchLabels:
+      app: eni-srcdst-disable
+  template:
+    metadata:
+      labels:
+        app: eni-srcdst-disable
+    spec:
+      serviceAccountName: eni-srcdst-disable
+      hostNetwork: true
+      priorityClassName: system-node-critical
+      nodeSelector:
+        bgp_router: "true"
+      tolerations:
+        - operator: Exists
+      volumes:
+        - name: aws-iam-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  expirationSeconds: 86400
+                  audience: openshift
+      initContainers:
+        - name: disable-srcdst
+          image: public.ecr.aws/aws-cli/aws-cli:latest
+          env:
+            - name: AWS_DEFAULT_REGION
+              value: ${AWS_REGION}
+            - name: AWS_REGION
+              value: ${AWS_REGION}
+            - name: HOME
+              value: /tmp
+            - name: AWS_ROLE_ARN
+              value: ${IAM_ROLE_ARN}
+            - name: AWS_WEB_IDENTITY_TOKEN_FILE
+              value: /var/run/secrets/eks.amazonaws.com/serviceaccount/token
+          volumeMounts:
+            - name: aws-iam-token
+              mountPath: /var/run/secrets/eks.amazonaws.com/serviceaccount
+              readOnly: true
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              TOKEN=$(curl -sf -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 60" \
+                http://169.254.169.254/latest/api/token)
+              MAC=$(curl -sf -H "X-aws-ec2-metadata-token: $TOKEN" \
+                http://169.254.169.254/latest/meta-data/network/interfaces/macs/ | head -1 | tr -d '/')
+              ENI=$(curl -sf -H "X-aws-ec2-metadata-token: $TOKEN" \
+                http://169.254.169.254/latest/meta-data/network/interfaces/macs/${MAC}/interface-id)
+              echo "Disabling SrcDst check on $ENI"
+              aws ec2 modify-network-interface-attribute \
+                --network-interface-id "$ENI" \
+                --no-source-dest-check
+        - name: create-bgp-peers
+          image: public.ecr.aws/aws-cli/aws-cli:latest
+          env:
+            - name: AWS_DEFAULT_REGION
+              value: "${AWS_REGION}"
+            - name: AWS_REGION
+              value: "${AWS_REGION}"
+            - name: HOME
+              value: /tmp
+            - name: ROUTE_SERVER_ID
+              value: "${ROUTE_SERVER_ID}"
+            - name: ROSA_BGP_ASN
+              value: "${ROSA_BGP_ASN}"
+            - name: CLUSTER_ID
+              value: "${CLUSTER_ID}"
+            - name: AWS_ROLE_ARN
+              value: ${IAM_ROLE_ARN}
+            - name: AWS_WEB_IDENTITY_TOKEN_FILE
+              value: /var/run/secrets/eks.amazonaws.com/serviceaccount/token
+          volumeMounts:
+            - name: aws-iam-token
+              mountPath: /var/run/secrets/eks.amazonaws.com/serviceaccount
+              readOnly: true
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+
+              # Get IMDSv2 token
+              TOKEN=$(curl -sf -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 60" \
+                http://169.254.169.254/latest/api/token)
+
+              # Get node's primary private IP
+              NODE_IP=$(curl -sf -H "X-aws-ec2-metadata-token: $TOKEN" \
+                http://169.254.169.254/latest/meta-data/local-ipv4)
+
+              # Get MAC address
+              MAC=$(curl -sf -H "X-aws-ec2-metadata-token: $TOKEN" \
+                http://169.254.169.254/latest/meta-data/network/interfaces/macs/ | head -1 | tr -d '/')
+
+              # Get subnet ID for this node
+              SUBNET_ID=$(curl -sf -H "X-aws-ec2-metadata-token: $TOKEN" \
+                http://169.254.169.254/latest/meta-data/network/interfaces/macs/${MAC}/subnet-id)
+
+              echo "Node IP: $NODE_IP"
+              echo "Subnet ID: $SUBNET_ID"
+              echo "Route Server ID: $ROUTE_SERVER_ID"
+
+              # Find Route Server endpoints in this subnet
+              ENDPOINT_IDS=$(aws ec2 describe-route-server-endpoints \
+                --query "RouteServerEndpoints[?RouteServerId=='${ROUTE_SERVER_ID}' && SubnetId=='${SUBNET_ID}'].RouteServerEndpointId" \
+                --output text)
+
+              if [ -z "$ENDPOINT_IDS" ]; then
+                echo "ERROR: No Route Server endpoints found in subnet $SUBNET_ID"
+                exit 1
+              fi
+
+              echo "Found endpoints: $ENDPOINT_IDS"
+
+              # Create BGP peer for each endpoint in this subnet
+              for ENDPOINT_ID in $ENDPOINT_IDS; do
+                # Check if peer already exists (idempotent) - exclude deleted peers
+                EXISTING=$(aws ec2 describe-route-server-peers \
+                  --query "RouteServerPeers[?RouteServerEndpointId=='${ENDPOINT_ID}' && PeerAddress=='${NODE_IP}' && State!='deleted'].RouteServerPeerId | [0]" \
+                  --output text 2>/dev/null || echo "")
+
+                if [ "$EXISTING" != "" ] && [ "$EXISTING" != "None" ]; then
+                  echo "✓ Peer already exists: endpoint=$ENDPOINT_ID ip=$NODE_IP id=$EXISTING"
+                  continue
+                fi
+
+                echo "Creating BGP peer: endpoint=$ENDPOINT_ID ip=$NODE_IP asn=$ROSA_BGP_ASN"
+
+                # Add creation timestamp for age-based cleanup safety
+                CREATED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+                aws ec2 create-route-server-peer \
+                  --route-server-endpoint-id "$ENDPOINT_ID" \
+                  --peer-address "$NODE_IP" \
+                  --bgp-options "PeerAsn=${ROSA_BGP_ASN},PeerLivenessDetection=bgp-keepalive" \
+                  --tag-specifications "ResourceType=route-server-peer,Tags=[{Key=kubernetes.io/cluster/${CLUSTER_ID},Value=owned},{Key=managed-by,Value=daemonset},{Key=node-ip,Value=${NODE_IP}},{Key=created-at,Value=${CREATED_AT}}]"
+
+                echo "✓ Created peer for endpoint $ENDPOINT_ID"
+              done
+
+              echo "BGP peer creation complete"
+      containers:
+        - name: pause
+          image: registry.k8s.io/pause:3.9
