@@ -48,3 +48,7 @@ tfbackend.tf
 
 # Ignore local_*.tf
 local_*.tf
+
+tests/test-vm-key*
+tests/test-vm-a.yaml
+tests/test-vm-b.yaml
