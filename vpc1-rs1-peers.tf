@@ -138,12 +138,3 @@ resource "aws_vpc_route_server_peer" "subnet3_ep2_rosa_router3" {
     }
   )
 }
-
-# run script to disable src/dst checking of all ec2 instances with tag bgp_router=true
-resource "null_resource" "disable_src_dst_check_sh" {
-  provisioner "local-exec" {
-    command = "${path.module}/scripts/disable_src_dst_check.sh"
-    interpreter = ["/bin/bash"]
-  }
-  depends_on = [aws_vpc_route_server_peer.subnet1_ep1_rosa_router1 , aws_vpc_route_server_peer.subnet2_ep1_rosa_router2 , aws_vpc_route_server_peer.subnet3_ep1_rosa_router3]
-}
