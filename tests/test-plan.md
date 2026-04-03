@@ -93,10 +93,10 @@ Client sent an HTTP request to an HTTPS server.
         * EC2 instance in different VPC to transit gateway to same VPC to CUDN VM - expected to succeed - PASS
             * No packet loss was observed when ping ran with default 1 second interval
     * MachinePool scaledown causes worker node that is the route next hop to be deleted
-        * CUDN VM to EC2 instance in same VPC - expected to succeed
-        * CUDN VM to same VPC to transit gateway to EC2 instance in different VPC - expected to succeed
-        * EC2 instance in same VPC to CUDN VM - expected to succeed
-        * EC2 instance in different VPC to transit gateway to same VPC to CUDN VM - expected to succeed
+        * CUDN VM to EC2 instance in same VPC - expected to succeed - PASS
+        * CUDN VM to same VPC to transit gateway to EC2 instance in different VPC - expected to succeed - PASS
+        * EC2 instance in same VPC to CUDN VM - expected to succeed - PASS
+        * EC2 instance in different VPC to transit gateway to same VPC to CUDN VM - expected to succeed - PASS
     * Version upgrade applied to MachinePool containing worker node that is the next route hop (causing worker node replacement and IP change)
         * CUDN VM to EC2 instance in same VPC - expected to succeed
         * CUDN VM to same VPC to transit gateway to EC2 instance in different VPC - expected to succeed
