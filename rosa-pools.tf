@@ -20,10 +20,13 @@ module "router-pool1" {
       Owner = var.owner
     }
     additional_security_group_ids = tolist(
-      [
-        aws_security_group.rosa_rfc1918_sg.id,
-        aws_security_group.rosa_allow_from_all_sg.id
-      ]
+      concat(
+        [
+          aws_security_group.rosa_rfc1918_sg.id,
+          aws_security_group.rosa_allow_from_all_sg.id
+        ],
+        var.enable_fsx_ontap ? [aws_security_group.rosa_worker_fsx_access_sg[0].id] : []
+      )
     )
     ec2_metadata_http_tokens = "required"
   }
@@ -60,10 +63,13 @@ module "router-pool2" {
       Owner = var.owner
     }
     additional_security_group_ids = tolist(
-      [
-        aws_security_group.rosa_rfc1918_sg.id,
-        aws_security_group.rosa_allow_from_all_sg.id
-      ]
+      concat(
+        [
+          aws_security_group.rosa_rfc1918_sg.id,
+          aws_security_group.rosa_allow_from_all_sg.id
+        ],
+        var.enable_fsx_ontap ? [aws_security_group.rosa_worker_fsx_access_sg[0].id] : []
+      )
     )
     ec2_metadata_http_tokens = "required"
   }
@@ -99,10 +105,13 @@ module "router-pool3" {
       Owner = var.owner
     }
     additional_security_group_ids = tolist(
-      [
-        aws_security_group.rosa_rfc1918_sg.id,
-        aws_security_group.rosa_allow_from_all_sg.id
-      ]
+      concat(
+        [
+          aws_security_group.rosa_rfc1918_sg.id,
+          aws_security_group.rosa_allow_from_all_sg.id
+        ],
+        var.enable_fsx_ontap ? [aws_security_group.rosa_worker_fsx_access_sg[0].id] : []
+      )
     )
     ec2_metadata_http_tokens = "required"
   }
