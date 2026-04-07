@@ -132,6 +132,25 @@ Note: If you get an error about openshift-frr-k8s namespace not available, just 
 ^^ This is just a quick hack, to be done in more "elegant" way later
 
 
+### 6.5 (Optional) Configure FSx for NetApp ONTAP storage
+If you enabled FSx ONTAP in your terraform.tfvars (by setting `enable_fsx_ontap = true`), run the following script to configure Trident CSI driver:
+```bash
+./configure-trident-fsx.sh
+```
+
+This script will:
+- Install the certified NetApp Trident operator
+- Deploy TridentOrchestrator with iSCSI support
+- Configure the FSx ONTAP backend using credentials from Terraform
+- Create and set the `trident-csi-san` StorageClass as default
+
+**Note**: FSx ONTAP must be deployed via Terraform first (set `enable_fsx_ontap = true` in terraform.tfvars before running `terraform apply`).
+
+After configuration, you can create PVCs:
+- **ReadWriteOnce (RWO)**: Use `volumeMode: Filesystem` (default)
+- **ReadWriteMany (RWX)**: Use `volumeMode: Block` for iSCSI multi-attach support
+
+
 ### 7. Apply oc configs and install OpenShift Virtualization
 Run oc apply on folder with yaml files to create CUDN:
 ```bash

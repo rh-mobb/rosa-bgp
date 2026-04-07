@@ -20,22 +20,22 @@ resource "aws_security_group" "fsx_ontap_sg" {
   description = "Security group for FSx ONTAP filesystem - allows HTTPS and iSCSI"
   vpc_id      = module.rosa-vpc.vpc_id
 
-  # HTTPS (NFS over TLS, management API)
+  # HTTPS from VPC (for worker nodes and SNATted pod traffic)
   ingress {
-    from_port       = 443
-    to_port         = 443
-    protocol        = "tcp"
-    security_groups = [aws_security_group.rosa_worker_fsx_access_sg[0].id]
-    description     = "HTTPS from ROSA worker nodes"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = [module.rosa-vpc.vpc_cidr_block]
+    description = "HTTPS from VPC CIDR"
   }
 
-  # iSCSI
+  # iSCSI from VPC (for worker nodes and SNATted pod traffic)
   ingress {
-    from_port       = 3260
-    to_port         = 3260
-    protocol        = "tcp"
-    security_groups = [aws_security_group.rosa_worker_fsx_access_sg[0].id]
-    description     = "iSCSI from ROSA worker nodes"
+    from_port   = 3260
+    to_port     = 3260
+    protocol    = "tcp"
+    cidr_blocks = [module.rosa-vpc.vpc_cidr_block]
+    description = "iSCSI from VPC CIDR"
   }
 
   # NFS (optional - uncomment if needed)
