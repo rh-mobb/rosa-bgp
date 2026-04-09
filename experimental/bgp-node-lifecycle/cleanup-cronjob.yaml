@@ -1,0 +1,156 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: bgp-peer-cleanup
+  namespace: eni-srcdst-disable
+  labels:
+    app: bgp-peer-cleanup
+spec:
+  schedule: "*/15 * * * *"  # Every 15 minutes
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid  # Prevent overlapping runs
+  jobTemplate:
+    spec:
+      backoffLimit: 2  # Retry on failure
+      template:
+        metadata:
+          labels:
+            app: bgp-peer-cleanup
+        spec:
+          serviceAccountName: eni-srcdst-disable
+          restartPolicy: OnFailure
+          volumes:
+          - name: aws-iam-token
+            projected:
+              sources:
+              - serviceAccountToken:
+                  path: token
+                  expirationSeconds: 86400
+                  audience: openshift
+          containers:
+          - name: cleanup
+            image: public.ecr.aws/aws-cli/aws-cli:latest
+            env:
+            - name: AWS_DEFAULT_REGION
+              value: "$AWS_REGION"
+            - name: AWS_REGION
+              value: "$AWS_REGION"
+            - name: CLUSTER_ID
+              value: "$CLUSTER_ID"
+            - name: DRY_RUN
+              value: "false"  # Set to "true" for testing
+            - name: MIN_AGE_MINUTES
+              value: "30"
+            - name: HOME
+              value: /tmp
+            - name: AWS_ROLE_ARN
+              value: ${IAM_ROLE_ARN}
+            - name: AWS_WEB_IDENTITY_TOKEN_FILE
+              value: /var/run/secrets/eks.amazonaws.com/serviceaccount/token
+            volumeMounts:
+            - name: aws-iam-token
+              mountPath: /var/run/secrets/eks.amazonaws.com/serviceaccount
+              readOnly: true
+            command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+
+              echo "Starting BGP peer cleanup (dry-run=$DRY_RUN, min-age=${MIN_AGE_MINUTES}min)"
+              echo "Cluster ID: $CLUSTER_ID"
+              echo "AWS Region: $AWS_DEFAULT_REGION"
+              echo ""
+
+              # 1. Get all active router node IPs from EC2
+              echo "Querying EC2 for active router node IPs..."
+              ACTIVE_IPS=$(aws ec2 describe-instances \
+                --filters \
+                  "Name=tag:kubernetes.io/cluster/${CLUSTER_ID},Values=owned" \
+                  "Name=tag:bgp_router,Values=true" \
+                  "Name=instance-state-name,Values=running,pending" \
+                --query 'Reservations[].Instances[].PrivateIpAddress' \
+                --output text)
+
+              if [ -z "$ACTIVE_IPS" ]; then
+                echo "WARNING: No active router nodes found!"
+                echo "This could mean the cluster is down or there's a configuration issue."
+                echo "Exiting without deleting any peers to be safe."
+                exit 0
+              fi
+
+              echo "Active router node IPs: $ACTIVE_IPS"
+              echo ""
+
+              # 2. Get all daemonset-managed peers (exclude already deleted)
+              echo "Querying Route Server for managed BGP peers..."
+              ALL_PEERS=$(aws ec2 describe-route-server-peers \
+                --query "RouteServerPeers[?Tags[?Key=='managed-by' && Value=='daemonset'] && State!='deleted'].{Id:RouteServerPeerId,Ip:PeerAddress,State:State,Tags:Tags}" \
+                --output json)
+
+              TOTAL_PEERS=$(echo "$ALL_PEERS" | jq length)
+              echo "Total managed peers (excluding deleted): $TOTAL_PEERS"
+              echo ""
+
+              if [ "$TOTAL_PEERS" -eq 0 ]; then
+                echo "No managed peers found. Nothing to do."
+                exit 0
+              fi
+
+              # 3. Process each peer
+              NOW_EPOCH=$(date +%s)
+              DELETED_COUNT=0
+              SKIPPED_COUNT=0
+
+              echo "Processing peers..."
+              echo ""
+
+              for peer in $(echo "$ALL_PEERS" | jq -c '.[]'); do
+                PEER_ID=$(echo "$peer" | jq -r '.Id')
+                PEER_IP=$(echo "$peer" | jq -r '.Ip')
+                PEER_STATE=$(echo "$peer" | jq -r '.State')
+
+                # Read creation timestamp from tag
+                CREATED_TIME=$(echo "$peer" | jq -r '.Tags[] | select(.Key=="created-at") | .Value')
+
+                # Check if IP is in active list
+                if echo "$ACTIVE_IPS" | grep -qw "$PEER_IP"; then
+                  echo "SKIP: Peer $PEER_ID ($PEER_IP) - IP is active"
+                  SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+                  continue
+                fi
+
+                # Calculate age from created-at tag
+                if [ -n "$CREATED_TIME" ] && [ "$CREATED_TIME" != "null" ]; then
+                  CREATED_EPOCH=$(date -d "$CREATED_TIME" +%s 2>/dev/null || echo "$NOW_EPOCH")
+                  AGE_MINUTES=$(( (NOW_EPOCH - CREATED_EPOCH) / 60 ))
+                else
+                  # No created-at tag (legacy peer) - treat as very old to allow deletion
+                  AGE_MINUTES=999999
+                fi
+
+                # Check minimum age
+                if [ "$AGE_MINUTES" -lt "$MIN_AGE_MINUTES" ]; then
+                  echo "SKIP: Peer $PEER_ID ($PEER_IP) - age ${AGE_MINUTES}min < ${MIN_AGE_MINUTES}min threshold"
+                  SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+                  continue
+                fi
+
+                # Delete stale peer
+                if [ "$DRY_RUN" = "true" ]; then
+                  echo "DRY-RUN: Would delete peer $PEER_ID (ip=$PEER_IP state=$PEER_STATE age=${AGE_MINUTES}min)"
+                  DELETED_COUNT=$((DELETED_COUNT + 1))
+                else
+                  echo "DELETING: Peer $PEER_ID (ip=$PEER_IP state=$PEER_STATE age=${AGE_MINUTES}min)"
+                  if aws ec2 delete-route-server-peer --route-server-peer-id "$PEER_ID"; then
+                    echo "✓ Deleted peer $PEER_ID"
+                    DELETED_COUNT=$((DELETED_COUNT + 1))
+                  else
+                    echo "✗ Failed to delete peer $PEER_ID" >&2
+                  fi
+                fi
+              done
+
+              echo ""
+              echo "Cleanup complete: deleted=$DELETED_COUNT skipped=$SKIPPED_COUNT"

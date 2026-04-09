@@ -16,3 +16,22 @@ spec:
       subnets:
       - 10.100.0.0/16
     topology: Layer2
+---
+apiVersion: k8s.ovn.org/v1
+kind: ClusterUserDefinedNetwork
+metadata:
+  name: cluster-udn-second
+  labels:
+    advertise: "true"
+spec:
+  namespaceSelector:
+    matchLabels:
+      cluster-udn: second
+  network:
+    layer2:
+      ipam:
+        lifecycle: Persistent
+      role: Primary
+      subnets:
+      - 10.101.0.0/16
+    topology: Layer2

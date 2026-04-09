@@ -71,6 +71,37 @@ watch oc get nodes -l bgp_router=true
 oc apply -f yamls/
 ```
 
+### Configuring FSx for NetApp ONTAP Storage (Optional)
+
+```bash
+# Configure Trident CSI driver with FSx ONTAP (if enable_fsx_ontap=true)
+./configure-trident-fsx.sh
+
+# This script will:
+# 1. Install certified Trident operator
+# 2. Deploy TridentOrchestrator
+# 3. Configure FSx backend with credentials from Terraform
+# 4. Create and set default StorageClass (trident-csi-san)
+
+# Verify Trident backend
+oc get tridentbackendconfig -n trident
+
+# Test storage provisioning
+cat <<EOF | oc apply -f -
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: test-pvc
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: trident-csi-san
+EOF
+```
+
 ### Inspecting BGP Configuration
 
 ```bash
@@ -101,12 +132,13 @@ oc get userdefinednetworks -A
 - `rosa-pools.tf` - Three machine pools for baremetal router nodes (one per subnet/AZ)
 - `vpc1-rs1.tf` - VPC Route Server, endpoints (2 per subnet), and propagation config
 - `vpc1-rs1-peers.tf` - BGP peer configuration between Route Server endpoints and router nodes
+- `vpc1-fsx-ontap.tf` - FSx for NetApp ONTAP filesystem, SVM, security groups (conditional on `enable_fsx_ontap` variable)
 - `tgw1.tf` - Transit Gateway attachments and static routes
 
 ### Helper Scripts
 
 - `scripts/wait_for_instance.sh` - Waits for EC2 instances with specific tags to become available (used as Terraform data source)
-- `scripts/disable_src_dst_check.sh` - Disables source/destination checking on router instances (required for routing)
+- `configure-trident-fsx.sh` - Configures NetApp Trident CSI driver with FSx ONTAP storage (installs operator, configures backend, sets default StorageClass)
 - `oc-cudn-run1.sh` - Configures FRR on router nodes to peer with Route Server endpoints
 
 ### OpenShift Configurations
@@ -128,9 +160,22 @@ oc get userdefinednetworks -A
 
 - **Instance Type**: Baremetal (`c5.metal` default) required for proper routing performance
 - **Tags**: Nodes tagged with `bgp_router=true` and `bgp_router_subnet={1-3}`
-- **Source/Dest Check**: Must be disabled (handled by `disable_src_dst_check.sh`)
+- **Source/Dest Check**: Must be disabled (handled by daemonset in cluster)
 - **Security Groups**: Two SGs attached - one allowing RFC1918, one allowing all (for IGW traffic)
 - **Placement**: One node per private subnet/AZ for redundancy
+
+### FSx for NetApp ONTAP Storage (Optional)
+
+- **Enable/Disable**: Set `enable_fsx_ontap = true` in `terraform.tfvars` to provision FSx resources
+- **Deployment**: Multi-AZ FSx ONTAP filesystem (1 TiB storage, 128 MB/s throughput by default)
+- **Location**: Deployed in VPC1 private subnets (10.0.1.0/24, 10.0.2.0/24)
+- **Storage Virtual Machine**: Auto-created with generated admin password
+- **Security**: Worker access security group applied to ALL ROSA workers (both default compute pool and machine pools)
+- **Protocols**: HTTPS (443) and iSCSI (3260) enabled by default; NFS and SMB available via uncommenting in `vpc1-fsx-ontap.tf`
+- **Credentials**: SVM admin username is `vsadmin`, password available via `terraform output -raw fsx_ontap_svm_admin_password`
+- **Endpoints**: Management, NFS, and iSCSI endpoints output by Terraform
+- **Cost**: ~$220/month for base 1 TiB Multi-AZ configuration in us-east-2
+- **Integration**: Use `configure-trident-fsx.sh` to configure Trident CSI driver for dynamic storage provisioning
 
 ### Deployment Dependencies
 
@@ -163,6 +208,7 @@ In `terraform.tfvars`:
 - `rosa_compute_instance_type` - Instance type for router nodes (must be baremetal)
 - `rosa_bgp_asn` - BGP AS number for ROSA side
 - `rs_amazon_side_asn` - BGP AS number for Route Server
+- `enable_fsx_ontap` - Enable FSx for NetApp ONTAP deployment (default: false)
 - VPC CIDR blocks and subnet ranges for both VPCs
 
 ### Adding More Router Nodes
