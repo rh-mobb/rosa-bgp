@@ -9,7 +9,7 @@ set -e
 # 4. Creates and sets default StorageClass
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="$SCRIPT_DIR"
 
 echo "=== Configuring NetApp Trident with FSx for ONTAP ==="
 echo
