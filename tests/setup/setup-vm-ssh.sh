@@ -54,7 +54,8 @@ spec:
             name: cloudinitdisk
           interfaces:
           - name: default
-            bridge: {}
+            binding:
+              name: l2bridge
         resources:
           requests:
             memory: 1Gi
@@ -111,7 +112,8 @@ spec:
             name: cloudinitdisk
           interfaces:
           - name: default
-            bridge: {}
+            binding:
+              name: l2bridge
         resources:
           requests:
             memory: 1Gi
