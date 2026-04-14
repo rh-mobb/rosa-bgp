@@ -199,8 +199,13 @@ To disable automatic installation of OpenShift Virtualization, set in terraform.
 install_openshift_virt = false
 ```
 
+# 9. Install BGP peer management and ENI disabling automation
 
-# 9. Clean up
+```bash
+./experimental/bgp-node-lifecycle/deploy.sh
+```
+
+# 10. Clean up
 Once finished, tear it down
 ```bash
 terraform destroy
