@@ -29,6 +29,10 @@ output "rosa_cluster_admin_password" {
   value       = nonsensitive(module.hcp.cluster_admin_password)
   #  sensitive   = true
 }
+output "rosa_cluster_id" {
+  description = "ROSA cluster ID for resource tagging"
+  value       = module.hcp.cluster_id
+}
 
 
 ### Create Security Group to allow ALL traffic from rfc1918
