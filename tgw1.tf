@@ -25,6 +25,9 @@ module "tgw1" {
       tgw_routes = [
       {
         destination_cidr_block = "10.100.0.0/16"
+      },
+      {
+        destination_cidr_block = "10.101.0.0/16"
       }
     ]
       tags = merge (
@@ -86,6 +89,22 @@ resource "aws_route" "ext-vpc_tgw_route_cudn1_private" {
 resource "aws_route" "ext-vpc_tgw_route_cudn1_public" {
   count = length(module.ext-vpc.public_route_table_ids)
   destination_cidr_block = "10.100.0.0/16"
+  transit_gateway_id = module.tgw1.ec2_transit_gateway_id
+  route_table_id = module.ext-vpc.public_route_table_ids[count.index]
+}
+
+# CUDN2 prefix into ext-vpc subnet RTs
+# private rts
+resource "aws_route" "ext-vpc_tgw_route_cudn2_private" {
+  count = length(module.ext-vpc.private_route_table_ids)
+  destination_cidr_block = "10.101.0.0/16"
+  transit_gateway_id = module.tgw1.ec2_transit_gateway_id
+  route_table_id = module.ext-vpc.private_route_table_ids[count.index]
+}
+# public rts
+resource "aws_route" "ext-vpc_tgw_route_cudn2_public" {
+  count = length(module.ext-vpc.public_route_table_ids)
+  destination_cidr_block = "10.101.0.0/16"
   transit_gateway_id = module.tgw1.ec2_transit_gateway_id
   route_table_id = module.ext-vpc.public_route_table_ids[count.index]
 }
