@@ -25,6 +25,12 @@ variable "rs_amazon_side_asn" {
   default = "65000"
 }
 
+variable "enable_fsx_ontap" {
+  description = "Enable FSx for NetApp ONTAP filesystem deployment"
+  type        = bool
+  default     = false
+}
+
 variable "vpc1-rosa_cidr" {
   default = "10.0.0.0/16"
 }

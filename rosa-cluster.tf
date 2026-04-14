@@ -16,6 +16,10 @@ module "hcp" {
   create_oidc           = true
   create_operator_roles = true
   operator_role_prefix  = "${var.rosa_cluster_name}-operator"
+
+  // FSx access security group (applied to all worker nodes)
+  // Note: This parameter is immutable after cluster creation
+  aws_additional_compute_security_group_ids = var.enable_fsx_ontap ? [aws_security_group.rosa_worker_fsx_access_sg[0].id] : null
 }
 
 # outputs ROSA cluster
@@ -93,6 +97,31 @@ resource "aws_security_group" "rosa_allow_from_all_sg" {
     local.tags,
     {
       Name = "${var.rosa_cluster_name}-allow-ALL-from-ALL-SG"
+    }
+  )
+}
+
+# Security Group for FSx access - applied to all worker nodes
+resource "aws_security_group" "rosa_worker_fsx_access_sg" {
+  count = var.enable_fsx_ontap ? 1 : 0
+
+  name_prefix = "rosa-virt-worker-fsx-access-sg-"
+  description = "Security group for ROSA workers to access FSx ONTAP"
+  vpc_id      = module.rosa-vpc.vpc_id
+
+  # No ingress rules - this SG acts as source identity for FSx security group
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(
+    local.tags,
+    {
+      Name = "${var.rosa_cluster_name}-worker-fsx-access-SG"
     }
   )
 }
