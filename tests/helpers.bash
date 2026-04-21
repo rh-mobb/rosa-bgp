@@ -1,9 +1,19 @@
 #!/bin/bash
-# Helper functions for BATS tests
+# Helper functions for BATS tests - OPTIMIZED VERSION
 
 # Setup jump pods for SSH access to VMs
 # Call this from setup_file() in your bats test
 setup_jump_pods() {
+    # Check if pods already exist and are ready - skip recreation
+    if oc get pod network-jump -n cudn1 &>/dev/null && \
+       oc get pod network-jump-cudn2 -n cudn2 &>/dev/null; then
+        if oc wait --for=condition=Ready pod/network-jump -n cudn1 --timeout=1s &>/dev/null && \
+           oc wait --for=condition=Ready pod/network-jump-cudn2 -n cudn2 --timeout=1s &>/dev/null; then
+            echo "Jump pods already exist and ready, skipping creation" >&2
+            return 0
+        fi
+    fi
+
     echo "Creating jump pods for VM SSH access..." >&2
 
     # Create jump pod in cudn1 with SSH key secret mounted
@@ -87,9 +97,18 @@ EOF
 # Cleanup jump pods
 # Call this from teardown_file() in your bats test
 teardown_jump_pods() {
-    echo "Cleaning up jump pods..." >&2
-    oc delete pod network-jump -n cudn1 --ignore-not-found=true >/dev/null 2>&1
-    oc delete pod network-jump-cudn2 -n cudn2 --ignore-not-found=true >/dev/null 2>&1
+    # OPTIMIZATION: Skip deletion to avoid 64s wait per test file
+    # Pods will be cleaned up at end of test suite or manually
+    echo "Skipping jump pod cleanup (performance optimization)" >&2
+    return 0
+}
+
+# Force cleanup jump pods (for final teardown)
+# Only call this when you truly need to delete them
+force_teardown_jump_pods() {
+    echo "Force cleaning up jump pods..." >&2
+    oc delete pod network-jump -n cudn1 --wait=false --ignore-not-found=true >/dev/null 2>&1
+    oc delete pod network-jump-cudn2 -n cudn2 --wait=false --ignore-not-found=true >/dev/null 2>&1
 }
 
 # Execute a command on a VM via SSH from a jump pod
