@@ -3,7 +3,7 @@
         * CUDN VM A/B traffic to Internet - expected to succeed - PASS
         * CUDN VM A/B DNS lookups to Internet UDP/TCP - expected to succeed
         * EC2 instance in same VPC to CUDN A/B VM - expected to succeed - PASS
-            * Note: A [flapping problem](connectivity-reproducer.md) was observed in bidirectional communication between a VM and an EC2 instance on 4.20.17, but is fixed by 4.21.8. This was originally believed to be because of live migration, but that was a red herring. Traffic was egressing from the CUDN through nodes that were not `bgp_router` nodes, and seemed to be stopping at the ENI, likely because of some combination of src/dest checks and security groups. The expected behavior is that traffic egresses from the same node the VM is on.
+            * Note: A flapping problem was observed in bidirectional communication between a VM and an EC2 instance on 4.20.17, but is fixed by 4.21.8. This was originally believed to be because of live migration, but that was a red herring. Traffic was egressing from the CUDN through nodes that were not `bgp_router` nodes, and seemed to be stopping at the ENI, likely because of some combination of src/dest checks and security groups. The expected behavior is that traffic egresses from the same node the VM is on.
             * Not yet tested: Packet loss after 15 min of pings to confirm the flapping problem is not happening.
         * EC2 instance in external VPC to transit gateway to CUDN VM A/B - expected to succeed - PASS
         * CUDN VM A/B to EC2 instance in same VPC - expected to succeed - PASS
