@@ -2,7 +2,7 @@
 # Test connectivity for VMs on CUDN networks
 
 # Load helper functions
-load helpers
+load ../../helpers
 
 # Setup: Create jump pods once for the entire test file
 setup_file() {
