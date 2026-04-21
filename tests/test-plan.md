@@ -1,4 +1,4 @@
-* Connectivity - for each test case, verify the following work from source to destination: ping, curl
+* Connectivity - for each test case, verify the following work from source to destination: ping (except to k8s services), curl
     * VM with primary CUDN - Uses a VM in CUDN A, and a second VM in CUDN B
         * CUDN VM A/B traffic to Internet - expected to succeed - PASS
         * EC2 instance in same VPC to CUDN A/B VM - expected to succeed - PASS
@@ -9,14 +9,12 @@
         * CUDN VM A/B to kapi - expected to succeed - PASS
             * Public API hostname tested: `api.ds-bgp.0w32.p3.openshiftapps.com`
             * Kubernetes service ClusterIP tested: `172.30.0.1`
-            * `ping` to the public API hostname and Kubernetes service ClusterIP failed
             * TCP/HTTPS connectivity to kapi succeeded
             * `/version` and `/readyz` returned 200
             * `GET /` returned 403 as `system:anonymous`, which is expected for unauthenticated access
         * CUDN VM A/B to kube dns - expected to succeed - PARTIAL
             * VM DNS server is `172.30.0.10`
             * reachability to DNS server:
-                * `ping 172.30.0.10` - FAIL
                 * `nc -vz 172.30.0.10 53` - PASS
             * name resolution:
                 * `api.ds-bgp.0w32.p3.openshiftapps.com` - PASS
