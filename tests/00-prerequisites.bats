@@ -4,23 +4,17 @@
 load helpers
 
 @test "test-vm-a has finished cloud-final" {
-    run vm_exec test-vm-a cudn1 "systemctl status cloud-final"
-    [ "$status" -eq 0 ]
+    assert_cloud_init_complete test-vm-a cudn1
 }
 
 @test "test-vm-b has finished cloud-final" {
-    run vm_exec test-vm-b cudn2 "systemctl status cloud-final"
-    [ "$status" -eq 0 ]
+    assert_cloud_init_complete test-vm-b cudn2
 }
 
 @test "test-vm-a has HTTP service responding" {
-    run vm_exec test-vm-a cudn1 "curl -s http://localhost"
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "Test VM A" ]]
+    assert_http_responding test-vm-a cudn1 "Test VM A"
 }
 
 @test "test-vm-b has HTTP service responding" {
-    run vm_exec test-vm-b cudn2 "curl -s http://localhost"
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "Test VM B" ]]
+    assert_http_responding test-vm-b cudn2 "Test VM B"
 }
