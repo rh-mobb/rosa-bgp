@@ -78,6 +78,7 @@ spec:
               - $PUBKEY
             packages:
               - httpd
+              - bind-utils
             runcmd:
               - [systemctl, enable, httpd]
               - [systemctl, start, httpd]
@@ -136,6 +137,7 @@ spec:
               - $PUBKEY
             packages:
               - httpd
+              - bind-utils
             runcmd:
               - [systemctl, enable, httpd]
               - [systemctl, start, httpd]
