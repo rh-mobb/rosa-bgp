@@ -3,14 +3,6 @@
 
 load helpers
 
-setup_file() {
-    setup_jump_pods
-}
-
-teardown_file() {
-    teardown_jump_pods
-}
-
 @test "test-vm-a has finished cloud-final" {
     run vm_exec test-vm-a cudn1 "systemctl status cloud-final"
     [ "$status" -eq 0 ]

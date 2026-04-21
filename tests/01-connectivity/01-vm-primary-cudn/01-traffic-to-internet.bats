@@ -4,16 +4,6 @@
 # Load helper functions
 load ../../helpers
 
-# Setup: Create jump pods once for the entire test file
-setup_file() {
-    setup_jump_pods
-}
-
-# Teardown: Clean up jump pods after all tests complete
-teardown_file() {
-    teardown_jump_pods
-}
-
 # Test: VM A can reach the internet
 @test "test-vm-a can ping Internet: 8.8.8.8" {
     run vm_exec test-vm-a cudn1 "ping -c 2 -W 2 8.8.8.8"
