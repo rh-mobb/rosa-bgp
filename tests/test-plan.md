@@ -23,7 +23,7 @@
                     * Note: only this one cluster-internal service name was tested; this does not prove all cluster-internal names fail
                     * Note: QE was able to nslookup kubernetes.default.svc.cluster.local from within a pod in a CUDN, so this may be specific to VMs.
         * CUDN VM A/B to port on worker node host API service
-            * Note: See [tests/qe-pod-worker-node-service.txt] for what QE tried previously
+            * Note: See [tests/qe-pod-worker-node-service.txt](tests/qe-pod-worker-node-service.txt) for what QE tried previously
         * CUDN A VM to CUDN A VM (on the same node) - expected to succeed
         * CUDN A VM to CUDN A VM (on a different node) - expected to succeed - PASS
         * CUDN A VM to CUDN A VM (different node) - expected to succeed - PASS
