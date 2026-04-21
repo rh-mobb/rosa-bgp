@@ -6,7 +6,7 @@
 setup_jump_pods() {
     echo "Creating jump pods for VM SSH access..." >&2
 
-    # Create jump pod in cudn1
+    # Create jump pod in cudn1 with SSH key secret mounted
     cat <<EOF | oc apply -f - 2>&1 | grep -v "unchanged" || true
 apiVersion: v1
 kind: Pod
@@ -17,6 +17,7 @@ spec:
   securityContext:
     runAsNonRoot: true
     runAsUser: 1000
+    fsGroup: 1000
     seccompProfile:
       type: RuntimeDefault
   containers:
@@ -29,9 +30,18 @@ spec:
         drop: ["ALL"]
       runAsNonRoot: true
       runAsUser: 1000
+    volumeMounts:
+    - name: ssh-key
+      mountPath: /home/test-user/.ssh
+      readOnly: true
+  volumes:
+  - name: ssh-key
+    secret:
+      secretName: test-vm-ssh-key
+      defaultMode: 0400
 EOF
 
-    # Create jump pod in cudn2
+    # Create jump pod in cudn2 with SSH key secret mounted
     cat <<EOF | oc apply -f - 2>&1 | grep -v "unchanged" || true
 apiVersion: v1
 kind: Pod
@@ -42,6 +52,7 @@ spec:
   securityContext:
     runAsNonRoot: true
     runAsUser: 1000
+    fsGroup: 1000
     seccompProfile:
       type: RuntimeDefault
   containers:
@@ -54,6 +65,15 @@ spec:
         drop: ["ALL"]
       runAsNonRoot: true
       runAsUser: 1000
+    volumeMounts:
+    - name: ssh-key
+      mountPath: /home/test-user/.ssh
+      readOnly: true
+  volumes:
+  - name: ssh-key
+    secret:
+      secretName: test-vm-ssh-key
+      defaultMode: 0400
 EOF
 
     # Wait for pods to be ready
@@ -79,7 +99,6 @@ vm_exec() {
     local vm_name=$1
     local namespace=$2
     local command=$3
-    local ssh_key="${SSH_KEY:-tests/test-vm-key}"
     local jump_pod="${JUMP_POD_PREFIX:-network-jump}"
 
     # Namespace-specific pod naming (cudn1 uses "network-jump", others use "network-jump-{namespace}")
@@ -94,15 +113,9 @@ vm_exec() {
         return 1
     fi
 
-    # Ensure SSH key is on jump pod (idempotent - only copies if not present)
-    if ! oc exec -n "$namespace" "$jump_pod" -- test -f /tmp/test-vm-key 2>/dev/null; then
-        oc cp "$ssh_key" "$namespace/$jump_pod:/tmp/test-vm-key" 2>&1 | grep -v "tar: Removing leading" || true
-        oc exec -n "$namespace" "$jump_pod" -- chmod 600 /tmp/test-vm-key 2>/dev/null
-    fi
-
-    # Execute command via SSH
+    # Execute command via SSH using mounted secret
     oc exec -n "$namespace" "$jump_pod" -- \
-        ssh -i /tmp/test-vm-key \
+        ssh -i /home/test-user/.ssh/id_ed25519 \
             -o StrictHostKeyChecking=no \
             -o UserKnownHostsFile=/dev/null \
             -o ConnectTimeout=5 \

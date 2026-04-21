@@ -1,6 +1,6 @@
 #!/bin/bash
 # Setup SSH access for test VMs
-# Generates an SSH keypair and updates VM configurations to use it
+# Generates an SSH keypair and stores it as Kubernetes secrets
 
 set -e
 
@@ -24,6 +24,18 @@ fi
 PUBKEY=$(cat ${KEYFILE}.pub)
 echo
 echo "Public key: $PUBKEY"
+echo
+
+# Create SSH key secrets in both namespaces
+echo "Creating SSH key secrets in namespaces..."
+for namespace in cudn1 cudn2; do
+    oc create secret generic test-vm-ssh-key \
+        --from-file=id_ed25519="$KEYFILE" \
+        --from-file=id_ed25519.pub="${KEYFILE}.pub" \
+        --namespace="$namespace" \
+        --dry-run=client -o yaml | oc apply -f -
+    echo "✓ Secret created/updated in $namespace"
+done
 echo
 
 # Update test-vm-a.yaml
@@ -84,6 +96,7 @@ spec:
               - [systemctl, start, httpd]
               - [/bin/sh, -c, 'echo "<h1>Test VM A - CUDN1</h1><p>Network: cluster-udn-prod (10.100.0.0/16)</p><p>IP: \$(hostname -I)</p>" > /var/www/html/index.html']
 EOF
+echo "✓ test-vm-a.yaml created"
 
 # Update test-vm-b.yaml
 echo "Updating test-vm-b.yaml..."
@@ -143,6 +156,7 @@ spec:
               - [systemctl, start, httpd]
               - [/bin/sh, -c, 'echo "<h1>Test VM B - CUDN2</h1><p>Network: cluster-udn-second (10.101.0.0/16)</p><p>IP: \$(hostname -I)</p>" > /var/www/html/index.html']
 EOF
+echo "✓ test-vm-b.yaml created"
 
 echo "✓ VM configurations updated"
 echo
