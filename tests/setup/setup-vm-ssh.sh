@@ -178,12 +178,66 @@ oc apply -f tests/test-vm-b.yaml
 echo "✓ VMs created"
 echo
 
+# Create jump pods for SSH access
+echo "Creating jump pods for test infrastructure..."
+for namespace in cudn1 cudn2; do
+    pod_name="network-jump"
+    [ "$namespace" = "cudn2" ] && pod_name="network-jump-cudn2"
+
+    cat <<PODEOF | oc apply -f - >/dev/null
+apiVersion: v1
+kind: Pod
+metadata:
+  name: $pod_name
+  namespace: $namespace
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+  - name: $pod_name
+    image: registry.access.redhat.com/ubi9/toolbox:latest
+    command: ["sleep", "infinity"]
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+      runAsNonRoot: true
+      runAsUser: 1000
+    volumeMounts:
+    - name: ssh-key
+      mountPath: /home/test-user/.ssh
+      readOnly: true
+  volumes:
+  - name: ssh-key
+    secret:
+      secretName: test-vm-ssh-key
+      defaultMode: 0400
+PODEOF
+    echo "✓ Jump pod created in $namespace"
+done
+
+# Wait for jump pods to be ready
+echo "Waiting for jump pods to be ready..."
+oc wait --for=condition=Ready pod/network-jump -n cudn1 --timeout=60s >/dev/null 2>&1
+oc wait --for=condition=Ready pod/network-jump-cudn2 -n cudn2 --timeout=60s >/dev/null 2>&1
+echo "✓ Jump pods ready"
+echo
+
 echo "==================================================================="
 echo "Setup complete!"
 echo "==================================================================="
 echo
 echo "SSH private key: $KEYFILE"
 echo "SSH public key: ${KEYFILE}.pub"
+echo
+echo "Infrastructure created:"
+echo "  - SSH key secrets in cudn1 and cudn2 namespaces"
+echo "  - Jump pods (network-jump) for test SSH access"
+echo "  - Test VMs: test-vm-a (cudn1), test-vm-b (cudn2)"
 echo
 echo "To SSH to VMs:"
 echo "  virtctl -n cudn1 ssh -i $KEYFILE fedora@test-vm-a"
