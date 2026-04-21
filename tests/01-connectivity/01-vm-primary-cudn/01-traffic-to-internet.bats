@@ -4,6 +4,25 @@
 # Load helper functions
 load ../../helpers
 
+# Assert that VM can ping an internet IP
+assert_can_ping_internet() {
+    local vm_name=$1
+    local namespace=$2
+    local ip_address=${3:-8.8.8.8}
+    run vm_exec "$vm_name" "$namespace" "ping -c 2 -W 2 $ip_address"
+    [ "$status" -eq 0 ]
+}
+
+# Assert that VM can curl an internet domain
+assert_can_curl_internet() {
+    local vm_name=$1
+    local namespace=$2
+    local url=${3:-http://www.google.com}
+    run vm_exec "$vm_name" "$namespace" "curl -s -I -m 5 $url"
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "HTTP" ]]
+}
+
 # Test: VM A can reach the internet
 @test "test-vm-a can ping Internet: 8.8.8.8" {
     assert_can_ping_internet test-vm-a cudn1 8.8.8.8
