@@ -25,28 +25,28 @@ assert_vm_can_curl_vm() {
     [[ "$output" =~ "HTTP" ]]
 }
 
-# Get test-vm-a2 IP
+# Get test-vm-a-sameworker IP
 setup() {
-    export VM_A2_IP=$(get_vm_ip test-vm-a2 cudn1 2>/dev/null)
+    export VM_A2_IP=$(get_vm_ip test-vm-a-sameworker cudn1 2>/dev/null)
     if [ -z "$VM_A2_IP" ]; then
-        skip "test-vm-a2 is not running. Run tests/setup/setup-vm-same-node.sh first."
+        skip "test-vm-a-sameworker is not running. Run tests/setup/setup-vm-same-node.sh first."
     fi
 
     # Verify both VMs are on the same node
     local vm_a_node=$(oc get vmi test-vm-a -n cudn1 -o jsonpath='{.status.nodeName}' 2>/dev/null)
-    local vm_a2_node=$(oc get vmi test-vm-a2 -n cudn1 -o jsonpath='{.status.nodeName}' 2>/dev/null)
+    local vm_a2_node=$(oc get vmi test-vm-a-sameworker -n cudn1 -o jsonpath='{.status.nodeName}' 2>/dev/null)
 
     if [ "$vm_a_node" != "$vm_a2_node" ]; then
-        skip "test-vm-a and test-vm-a2 are not on the same node"
+        skip "test-vm-a and test-vm-a-sameworker are not on the same node"
     fi
 }
 
-# Test: test-vm-a can ping test-vm-a2
-@test "test-vm-a can ping test-vm-a2 (same node, same CUDN)" {
+# Test: test-vm-a can ping test-vm-a-sameworker
+@test "test-vm-a can ping test-vm-a-sameworker (same node, same CUDN)" {
     assert_vm_can_ping_vm test-vm-a cudn1 "$VM_A2_IP"
 }
 
-# Test: test-vm-a can curl test-vm-a2
-@test "test-vm-a can curl test-vm-a2 (same node, same CUDN)" {
+# Test: test-vm-a can curl test-vm-a-sameworker
+@test "test-vm-a can curl test-vm-a-sameworker (same node, same CUDN)" {
     assert_vm_can_curl_vm test-vm-a cudn1 "$VM_A2_IP"
 }
