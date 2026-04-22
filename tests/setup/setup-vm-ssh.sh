@@ -166,6 +166,7 @@ echo
 # Delete existing VMs
 echo "Deleting existing VMs..."
 oc delete vm test-vm-a -n cudn1 --ignore-not-found=true
+oc delete vm test-vm-a2 -n cudn1 --ignore-not-found=true
 oc delete vm test-vm-b -n cudn2 --ignore-not-found=true
 echo "✓ VMs deleted"
 echo
@@ -177,7 +178,90 @@ sleep 5
 echo "Creating VMs with SSH keys..."
 oc apply -f tests/test-vm-a.yaml
 oc apply -f tests/test-vm-b.yaml
-echo "✓ VMs created"
+echo "✓ test-vm-a and test-vm-b created"
+echo
+
+# Wait for test-vm-a to be running so we can get its node
+echo "Waiting for test-vm-a to be running..."
+oc wait --for=condition=Ready vmi/test-vm-a -n cudn1 --timeout=300s
+VM_A_NODE=$(oc get vmi test-vm-a -n cudn1 -o jsonpath='{.status.nodeName}')
+echo "✓ test-vm-a is running on node: $VM_A_NODE"
+echo
+
+# Create test-vm-a2 on the same node as test-vm-a
+echo "Updating test-vm-a2.yaml..."
+cat > tests/test-vm-a2.yaml <<EOF
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: test-vm-a2
+  namespace: cudn1
+  labels:
+    app: test-vm
+spec:
+  running: true
+  template:
+    metadata:
+      labels:
+        kubevirt.io/vm: test-vm-a2
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: In
+                values:
+                - $VM_A_NODE
+      domain:
+        devices:
+          disks:
+          - disk:
+              bus: virtio
+            name: containerdisk
+          - disk:
+              bus: virtio
+            name: cloudinitdisk
+          interfaces:
+          - name: default
+            binding:
+              name: l2bridge
+        resources:
+          requests:
+            memory: 1Gi
+            cpu: 1
+      networks:
+      - name: default
+        pod: {}
+      volumes:
+      - name: containerdisk
+        containerDisk:
+          image: quay.io/kubevirt/fedora-cloud-container-disk-demo:latest
+      - name: cloudinitdisk
+        cloudInitNoCloud:
+          userData: |
+            #cloud-config
+            password: fedora
+            chpasswd: { expire: False }
+            ssh_pwauth: True
+            ssh_authorized_keys:
+              - $PUBKEY
+            packages:
+              - httpd
+              - bind-utils
+              - nmap-ncat
+            runcmd:
+              - [systemctl, enable, httpd]
+              - [systemctl, start, httpd]
+              - [/bin/sh, -c, 'echo "<h1>Test VM A2 - CUDN1</h1><p>Network: cluster-udn-prod (10.100.0.0/16)</p><p>Node: $VM_A_NODE</p><p>IP: \$(hostname -I)</p>" > /var/www/html/index.html']
+EOF
+echo "✓ test-vm-a2.yaml created"
+
+# Apply test-vm-a2
+echo "Creating test-vm-a2 on same node as test-vm-a..."
+oc apply -f tests/test-vm-a2.yaml
+echo "✓ test-vm-a2 created"
 echo
 
 # Create jump pods for SSH access
@@ -230,6 +314,21 @@ echo "✓ Jump pods ready"
 echo
 
 echo "==================================================================="
+echo "Waiting for all VMs to be ready..."
+echo "==================================================================="
+echo
+echo "Waiting for test-vm-a2 and test-vm-b..."
+oc wait --for=condition=Ready vmi/test-vm-a2 -n cudn1 --timeout=300s >/dev/null 2>&1
+oc wait --for=condition=Ready vmi/test-vm-b -n cudn2 --timeout=300s >/dev/null 2>&1
+echo "✓ All VMs are ready"
+echo
+
+# Verify test-vm-a and test-vm-a2 are on the same node
+VM_A_NODE_FINAL=$(oc get vmi test-vm-a -n cudn1 -o jsonpath='{.status.nodeName}')
+VM_A2_NODE=$(oc get vmi test-vm-a2 -n cudn1 -o jsonpath='{.status.nodeName}')
+VM_B_NODE=$(oc get vmi test-vm-b -n cudn2 -o jsonpath='{.status.nodeName}')
+
+echo "==================================================================="
 echo "Setup complete!"
 echo "==================================================================="
 echo
@@ -239,11 +338,23 @@ echo
 echo "Infrastructure created:"
 echo "  - SSH key secrets in cudn1 and cudn2 namespaces"
 echo "  - Jump pods (network-jump) for test SSH access"
-echo "  - Test VMs: test-vm-a (cudn1), test-vm-b (cudn2)"
+echo "  - Test VMs:"
+echo "    - test-vm-a (cudn1) on node: $VM_A_NODE_FINAL"
+echo "    - test-vm-a2 (cudn1) on node: $VM_A2_NODE"
+echo "    - test-vm-b (cudn2) on node: $VM_B_NODE"
 echo
+
+if [ "$VM_A_NODE_FINAL" = "$VM_A2_NODE" ]; then
+    echo "✓ test-vm-a and test-vm-a2 are on the same node"
+else
+    echo "⚠ WARNING: test-vm-a and test-vm-a2 are on different nodes!"
+fi
+echo
+
 echo "To SSH to VMs:"
 echo "  virtctl -n cudn1 ssh -i $KEYFILE fedora@test-vm-a"
+echo "  virtctl -n cudn1 ssh -i $KEYFILE fedora@test-vm-a2"
 echo "  virtctl -n cudn2 ssh -i $KEYFILE fedora@test-vm-b"
 echo
-echo "Waiting for VMs to be ready (this may take 3-5 minutes)..."
-echo "Run: oc get vmi -A"
+echo "VM Status:"
+oc get vmi -A | grep test-vm
