@@ -91,6 +91,7 @@ spec:
             packages:
               - httpd
               - bind-utils
+              - nmap-ncat
             runcmd:
               - [systemctl, enable, httpd]
               - [systemctl, start, httpd]
@@ -151,6 +152,7 @@ spec:
             packages:
               - httpd
               - bind-utils
+              - nmap-ncat
             runcmd:
               - [systemctl, enable, httpd]
               - [systemctl, start, httpd]
