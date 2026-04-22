@@ -8,6 +8,14 @@ resource "aws_instance" "test_instance_vpc2" {
 
   iam_instance_profile = aws_iam_instance_profile.test_instance_profile.name
 
+  user_data = <<-EOF
+    #!/bin/bash
+    dnf install -y httpd
+    systemctl start httpd
+    systemctl enable httpd
+    echo "Test Instance in VPC2" > /var/www/html/index.html
+  EOF
+
   tags = merge(
     local.tags,
     {
@@ -26,6 +34,14 @@ resource "aws_security_group" "test_instance_vpc2_sg" {
     to_port     = -1
     protocol    = "icmp"
     cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc1-rosa_cidr, "10.100.0.0/15", var.vpc2-ext_cidr]
+    description = "HTTP from VPC1, CUDN, and VPC2"
   }
 
   egress {
