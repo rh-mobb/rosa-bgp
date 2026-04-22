@@ -64,3 +64,61 @@ test_vm_ssh() {
 
     vm_exec "$vm_name" "$namespace" "echo 'SSH OK'" >/dev/null 2>&1
 }
+
+# Execute a command on an EC2 instance via SSM Session Manager
+# Usage: ec2_exec <instance_id> <command>
+# Returns: exit code from the command executed on the EC2 instance
+ec2_exec() {
+    local instance_id=$1
+    local command=$2
+
+    # Get AWS region from terraform output
+    local aws_region=$(terraform output -raw eni_srcdst_aws_region 2>/dev/null)
+    if [ -z "$aws_region" ]; then
+        echo "ERROR: Could not get AWS region from terraform output" >&2
+        return 1
+    fi
+
+    # Send command via SSM and get command ID
+    local command_id=$(aws ssm send-command \
+        --instance-ids "$instance_id" \
+        --document-name "AWS-RunShellScript" \
+        --parameters "commands=[\"$command\"]" \
+        --region "$aws_region" \
+        --output text \
+        --query 'Command.CommandId')
+
+    if [ -z "$command_id" ]; then
+        echo "ERROR: Failed to send command to instance $instance_id" >&2
+        return 1
+    fi
+
+    # Wait for command to complete (timeout 30 seconds)
+    aws ssm wait command-executed \
+        --command-id "$command_id" \
+        --instance-id "$instance_id" \
+        --region "$aws_region" \
+        2>/dev/null || true
+
+    # Get command output and status
+    local result=$(aws ssm get-command-invocation \
+        --command-id "$command_id" \
+        --instance-id "$instance_id" \
+        --region "$aws_region" \
+        --output json)
+
+    local status_code=$(echo "$result" | jq -r '.ResponseCode')
+    local stdout=$(echo "$result" | jq -r '.StandardOutputContent')
+    local stderr=$(echo "$result" | jq -r '.StandardErrorContent')
+
+    # Print stdout
+    echo "$stdout"
+
+    # Print stderr to stderr if non-empty
+    if [ -n "$stderr" ] && [ "$stderr" != "null" ]; then
+        echo "$stderr" >&2
+    fi
+
+    # Return the command's exit code
+    return "$status_code"
+}
