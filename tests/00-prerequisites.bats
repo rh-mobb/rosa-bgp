@@ -29,6 +29,10 @@ assert_http_responding() {
     assert_cloud_init_complete test-vm-a-sameworker cudn1
 }
 
+@test "test-vm-a-differentworker has finished cloud-final" {
+    assert_cloud_init_complete test-vm-a-differentworker cudn1
+}
+
 @test "test-vm-b has finished cloud-final" {
     assert_cloud_init_complete test-vm-b cudn2
 }
@@ -38,7 +42,11 @@ assert_http_responding() {
 }
 
 @test "test-vm-a-sameworker has HTTP service responding" {
-    assert_http_responding test-vm-a-sameworker cudn1 "Test VM A2"
+    assert_http_responding test-vm-a-sameworker cudn1 "Test VM A"
+}
+
+@test "test-vm-a-differentworker has HTTP service responding" {
+    assert_http_responding test-vm-a-differentworker cudn1 "Test VM A Different Worker"
 }
 
 @test "test-vm-b has HTTP service responding" {
