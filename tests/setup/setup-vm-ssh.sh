@@ -169,6 +169,7 @@ oc delete vm test-vm-a -n cudn1 --ignore-not-found=true
 oc delete vm test-vm-a-sameworker -n cudn1 --ignore-not-found=true
 oc delete vm test-vm-a-differentworker -n cudn1 --ignore-not-found=true
 oc delete vm test-vm-b -n cudn2 --ignore-not-found=true
+oc delete vm test-vm-b-sameworker-as-a -n cudn2 --ignore-not-found=true
 echo "✓ VMs deleted"
 echo
 
@@ -342,6 +343,82 @@ oc apply -f tests/test-vm-a-differentworker.yaml
 echo "✓ test-vm-a-differentworker created"
 echo
 
+# Create test-vm-b-sameworker-as-a on the same node as test-vm-a (for isolation testing)
+echo "Updating test-vm-b-sameworker-as-a.yaml..."
+cat > tests/test-vm-b-sameworker-as-a.yaml <<EOF
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: test-vm-b-sameworker-as-a
+  namespace: cudn2
+  labels:
+    app: test-vm
+spec:
+  running: true
+  template:
+    metadata:
+      labels:
+        kubevirt.io/vm: test-vm-b-sameworker-as-a
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: In
+                values:
+                - $VM_A_NODE
+      domain:
+        devices:
+          disks:
+          - disk:
+              bus: virtio
+            name: containerdisk
+          - disk:
+              bus: virtio
+            name: cloudinitdisk
+          interfaces:
+          - name: default
+            binding:
+              name: l2bridge
+        resources:
+          requests:
+            memory: 1Gi
+            cpu: 1
+      networks:
+      - name: default
+        pod: {}
+      volumes:
+      - name: containerdisk
+        containerDisk:
+          image: quay.io/kubevirt/fedora-cloud-container-disk-demo:latest
+      - name: cloudinitdisk
+        cloudInitNoCloud:
+          userData: |
+            #cloud-config
+            password: fedora
+            chpasswd: { expire: False }
+            ssh_pwauth: True
+            ssh_authorized_keys:
+              - $PUBKEY
+            packages:
+              - httpd
+              - bind-utils
+              - nmap-ncat
+            runcmd:
+              - [systemctl, enable, httpd]
+              - [systemctl, start, httpd]
+              - [/bin/sh, -c, 'echo "<h1>Test VM B Same Worker as A - CUDN2</h1><p>Network: cluster-udn-second (10.101.0.0/16)</p><p>Node: $VM_A_NODE</p><p>IP: \$(hostname -I)</p>" > /var/www/html/index.html']
+EOF
+echo "✓ test-vm-b-sameworker-as-a.yaml created"
+
+# Apply test-vm-b-sameworker-as-a
+echo "Creating test-vm-b-sameworker-as-a on same node as test-vm-a (for CUDN isolation testing)..."
+oc apply -f tests/test-vm-b-sameworker-as-a.yaml
+echo "✓ test-vm-b-sameworker-as-a created"
+echo
+
 # Create jump pods for SSH access
 echo "Creating jump pods for test infrastructure..."
 for namespace in cudn1 cudn2; do
@@ -395,10 +472,11 @@ echo "==================================================================="
 echo "Waiting for all VMs to be ready..."
 echo "==================================================================="
 echo
-echo "Waiting for test-vm-a-sameworker, test-vm-a-differentworker, and test-vm-b..."
+echo "Waiting for test-vm-a-sameworker, test-vm-a-differentworker, test-vm-b, and test-vm-b-sameworker-as-a..."
 oc wait --for=condition=Ready vmi/test-vm-a-sameworker -n cudn1 --timeout=300s >/dev/null 2>&1
 oc wait --for=condition=Ready vmi/test-vm-a-differentworker -n cudn1 --timeout=300s >/dev/null 2>&1
 oc wait --for=condition=Ready vmi/test-vm-b -n cudn2 --timeout=300s >/dev/null 2>&1
+oc wait --for=condition=Ready vmi/test-vm-b-sameworker-as-a -n cudn2 --timeout=300s >/dev/null 2>&1
 echo "✓ All VMs are ready"
 echo
 
@@ -407,6 +485,7 @@ VM_A_NODE_FINAL=$(oc get vmi test-vm-a -n cudn1 -o jsonpath='{.status.nodeName}'
 VM_A_SAMEWORKER_NODE=$(oc get vmi test-vm-a-sameworker -n cudn1 -o jsonpath='{.status.nodeName}')
 VM_A_DIFFERENTWORKER_NODE=$(oc get vmi test-vm-a-differentworker -n cudn1 -o jsonpath='{.status.nodeName}')
 VM_B_NODE=$(oc get vmi test-vm-b -n cudn2 -o jsonpath='{.status.nodeName}')
+VM_B_SAMEWORKER_AS_A_NODE=$(oc get vmi test-vm-b-sameworker-as-a -n cudn2 -o jsonpath='{.status.nodeName}')
 
 echo "==================================================================="
 echo "Setup complete!"
@@ -423,6 +502,7 @@ echo "    - test-vm-a (cudn1) on node: $VM_A_NODE_FINAL"
 echo "    - test-vm-a-sameworker (cudn1) on node: $VM_A_SAMEWORKER_NODE"
 echo "    - test-vm-a-differentworker (cudn1) on node: $VM_A_DIFFERENTWORKER_NODE"
 echo "    - test-vm-b (cudn2) on node: $VM_B_NODE"
+echo "    - test-vm-b-sameworker-as-a (cudn2) on node: $VM_B_SAMEWORKER_AS_A_NODE"
 echo
 
 if [ "$VM_A_NODE_FINAL" = "$VM_A_SAMEWORKER_NODE" ]; then
@@ -436,6 +516,12 @@ if [ "$VM_A_NODE_FINAL" != "$VM_A_DIFFERENTWORKER_NODE" ]; then
 else
     echo "⚠ WARNING: test-vm-a and test-vm-a-differentworker are on the same node!"
 fi
+
+if [ "$VM_A_NODE_FINAL" = "$VM_B_SAMEWORKER_AS_A_NODE" ]; then
+    echo "✓ test-vm-a and test-vm-b-sameworker-as-a are on the same node (for CUDN isolation testing)"
+else
+    echo "⚠ WARNING: test-vm-a and test-vm-b-sameworker-as-a are on different nodes!"
+fi
 echo
 
 echo "To SSH to VMs:"
@@ -443,6 +529,7 @@ echo "  virtctl -n cudn1 ssh -i $KEYFILE fedora@test-vm-a"
 echo "  virtctl -n cudn1 ssh -i $KEYFILE fedora@test-vm-a-sameworker"
 echo "  virtctl -n cudn1 ssh -i $KEYFILE fedora@test-vm-a-differentworker"
 echo "  virtctl -n cudn2 ssh -i $KEYFILE fedora@test-vm-b"
+echo "  virtctl -n cudn2 ssh -i $KEYFILE fedora@test-vm-b-sameworker-as-a"
 echo
 echo "VM Status:"
 oc get vmi -A | grep test-vm
