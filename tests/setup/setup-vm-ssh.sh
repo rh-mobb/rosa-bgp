@@ -420,6 +420,99 @@ EOF
 echo "✓ NodePort test deployment and service (ETP=Local, same node) created"
 echo
 
+# Create NodePort test deployments and service with Local ETP (2 pods: same+diff node) in cudn1
+echo "Creating NodePort test deployments and service (ETP=Local, 2 pods on different nodes) in cudn1..."
+cat <<EOF | oc apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-openshift-nodeport-local-diffnode-samenode
+  namespace: cudn1
+  labels:
+    app: hello-openshift-nodeport-local-diffnode
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hello-openshift-nodeport-local-diffnode
+      deployment: samenode
+  template:
+    metadata:
+      labels:
+        app: hello-openshift-nodeport-local-diffnode
+        deployment: samenode
+    spec:
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: kubevirt.io/vm
+                operator: In
+                values:
+                - test-vm-a
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - name: hello-openshift
+        image: openshift/hello-openshift
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-openshift-nodeport-local-diffnode-diffnode
+  namespace: cudn1
+  labels:
+    app: hello-openshift-nodeport-local-diffnode
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hello-openshift-nodeport-local-diffnode
+      deployment: diffnode
+  template:
+    metadata:
+      labels:
+        app: hello-openshift-nodeport-local-diffnode
+        deployment: diffnode
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: kubevirt.io/vm
+                operator: In
+                values:
+                - test-vm-a
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - name: hello-openshift
+        image: openshift/hello-openshift
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-openshift-nodeport-local-diffnode
+  namespace: cudn1
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector:
+    app: hello-openshift-nodeport-local-diffnode
+  ports:
+  - protocol: TCP
+    port: 8080
+    targetPort: 8080
+EOF
+echo "✓ NodePort test deployments and service (ETP=Local, 2 pods on different nodes) created"
+echo
+
 echo "==================================================================="
 echo "Waiting for all VMs to be ready..."
 echo "==================================================================="
