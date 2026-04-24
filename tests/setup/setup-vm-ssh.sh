@@ -310,6 +310,61 @@ EOF
 echo "✓ NodePort test deployment and service created"
 echo
 
+# Create NodePort test deployment and service with different node in cudn1
+echo "Creating NodePort test deployment and service (different node) in cudn1..."
+cat <<EOF | oc apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-openshift-nodeport-diffnode
+  namespace: cudn1
+  labels:
+    app: hello-openshift-nodeport-diffnode
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hello-openshift-nodeport-diffnode
+  template:
+    metadata:
+      labels:
+        app: hello-openshift-nodeport-diffnode
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: kubevirt.io/vm
+                operator: In
+                values:
+                - test-vm-a
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - name: hello-openshift
+        image: openshift/hello-openshift
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-openshift-nodeport-diffnode
+  namespace: cudn1
+spec:
+  type: NodePort
+  externalTrafficPolicy: Cluster
+  selector:
+    app: hello-openshift-nodeport-diffnode
+  ports:
+  - protocol: TCP
+    port: 8080
+    targetPort: 8080
+EOF
+echo "✓ NodePort test deployment and service (different node) created"
+echo
+
 echo "==================================================================="
 echo "Waiting for all VMs to be ready..."
 echo "==================================================================="
