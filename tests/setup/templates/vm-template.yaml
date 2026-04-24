@@ -1,0 +1,56 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: ${VM_NAME}
+  namespace: ${VM_NAMESPACE}
+  labels:
+    app: test-vm
+spec:
+  running: true
+  template:
+    metadata:
+      labels:
+        kubevirt.io/vm: ${VM_NAME}
+    spec:
+${AFFINITY_YAML}
+      domain:
+        devices:
+          disks:
+          - disk:
+              bus: virtio
+            name: containerdisk
+          - disk:
+              bus: virtio
+            name: cloudinitdisk
+          interfaces:
+          - name: default
+            binding:
+              name: l2bridge
+        resources:
+          requests:
+            memory: 1Gi
+            cpu: 1
+      networks:
+      - name: default
+        pod: {}
+      volumes:
+      - name: containerdisk
+        containerDisk:
+          image: quay.io/kubevirt/fedora-cloud-container-disk-demo:latest
+      - name: cloudinitdisk
+        cloudInitNoCloud:
+          userData: |
+            #cloud-config
+            password: fedora
+            chpasswd: { expire: False }
+            ssh_pwauth: True
+            ssh_authorized_keys:
+              - ${SSH_PUBKEY}
+            packages:
+              - httpd
+              - bind-utils
+              - nmap-ncat
+            runcmd:
+              - [systemctl, enable, httpd]
+              - [systemctl, start, httpd]
+              - [/bin/sh, -c, 'echo "${HTML_CONTENT}" > /var/www/html/index.html']
