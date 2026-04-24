@@ -5,6 +5,86 @@
 set -e
 
 KEYFILE="tests/test-vm-key"
+TEMPLATE_FILE="tests/setup/templates/vm-template.yaml"
+JUMP_POD_TEMPLATE="tests/setup/templates/jump-pod-template.yaml"
+
+# Generate jump pod YAML from template
+# Usage: generate_jump_pod_yaml <pod_name> <namespace>
+generate_jump_pod_yaml() {
+    local pod_name=$1
+    local namespace=$2
+
+    # Export variables for envsubst
+    export POD_NAME="$pod_name"
+    export POD_NAMESPACE="$namespace"
+
+    # Generate YAML from template
+    envsubst < "$JUMP_POD_TEMPLATE"
+}
+
+# Generate VM YAML from template
+# Usage: generate_vm_yaml <vm_name> <namespace> <html_content> <affinity_type> [target_vm] [target_namespace]
+# affinity_type: "none", "same-node", "different-node"
+# target_vm: VM name to use for pod affinity/anti-affinity (required for same-node/different-node)
+# target_namespace: Namespace of target VM (defaults to same as vm namespace)
+generate_vm_yaml() {
+    local vm_name=$1
+    local namespace=$2
+    local html_content=$3
+    local affinity_type=$4
+    local target_vm=$5
+    local target_namespace=${6:-$namespace}
+
+    # Quote HTML content for YAML
+    html_content="${html_content//\"/\\\"}"
+
+    # Generate affinity YAML based on type
+    local affinity_yaml=""
+    local affinity_kind=""
+
+    case "$affinity_type" in
+        "same-node")
+            affinity_kind="podAffinity"
+            ;;
+        "different-node")
+            affinity_kind="podAntiAffinity"
+            ;;
+        *)
+            affinity_kind=""
+            ;;
+    esac
+
+    if [ -n "$affinity_kind" ]; then
+        # Add namespaces field if target is in a different namespace
+        local namespaces_yaml=""
+        if [ "$target_namespace" != "$namespace" ]; then
+            namespaces_yaml="
+            namespaces:
+            - $target_namespace"
+        fi
+
+        affinity_yaml="      affinity:
+        $affinity_kind:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: kubevirt.io/vm
+                operator: In
+                values:
+                - $target_vm$namespaces_yaml
+            topologyKey: kubernetes.io/hostname"
+    fi
+
+    # Export variables for envsubst
+    export VM_NAME="$vm_name"
+    export VM_NAMESPACE="$namespace"
+    export SSH_PUBKEY="$PUBKEY"
+    export HTML_CONTENT="$html_content"
+    export AFFINITY_YAML="$affinity_yaml"
+
+    # Generate YAML from template
+    envsubst < "$TEMPLATE_FILE"
+}
 
 echo "==================================================================="
 echo "Setting up SSH access for test VMs"
@@ -40,124 +120,22 @@ echo
 
 # Update test-vm-a.yaml
 echo "Updating test-vm-a.yaml..."
-cat > tests/test-vm-a.yaml <<EOF
-apiVersion: kubevirt.io/v1
-kind: VirtualMachine
-metadata:
-  name: test-vm-a
-  namespace: cudn1
-  labels:
-    app: test-vm
-spec:
-  running: true
-  template:
-    metadata:
-      labels:
-        kubevirt.io/vm: test-vm-a
-    spec:
-      domain:
-        devices:
-          disks:
-          - disk:
-              bus: virtio
-            name: containerdisk
-          - disk:
-              bus: virtio
-            name: cloudinitdisk
-          interfaces:
-          - name: default
-            binding:
-              name: l2bridge
-        resources:
-          requests:
-            memory: 1Gi
-            cpu: 1
-      networks:
-      - name: default
-        pod: {}
-      volumes:
-      - name: containerdisk
-        containerDisk:
-          image: quay.io/kubevirt/fedora-cloud-container-disk-demo:latest
-      - name: cloudinitdisk
-        cloudInitNoCloud:
-          userData: |
-            #cloud-config
-            password: fedora
-            chpasswd: { expire: False }
-            ssh_pwauth: True
-            ssh_authorized_keys:
-              - $PUBKEY
-            packages:
-              - httpd
-              - bind-utils
-              - nmap-ncat
-            runcmd:
-              - [systemctl, enable, httpd]
-              - [systemctl, start, httpd]
-              - [/bin/sh, -c, 'echo "<h1>Test VM A - CUDN1</h1><p>Network: cluster-udn-prod (10.100.0.0/16)</p><p>IP: \$(hostname -I)</p>" > /var/www/html/index.html']
-EOF
+generate_vm_yaml \
+    "test-vm-a" \
+    "cudn1" \
+    "<h1>Test VM A - CUDN1</h1><p>Network: cluster-udn-prod (10.100.0.0/16)</p><p>IP: \$(hostname -I)</p>" \
+    "none" \
+    > tests/test-vm-a.yaml
 echo "✓ test-vm-a.yaml created"
 
 # Update test-vm-b.yaml
 echo "Updating test-vm-b.yaml..."
-cat > tests/test-vm-b.yaml <<EOF
-apiVersion: kubevirt.io/v1
-kind: VirtualMachine
-metadata:
-  name: test-vm-b
-  namespace: cudn2
-  labels:
-    app: test-vm
-spec:
-  running: true
-  template:
-    metadata:
-      labels:
-        kubevirt.io/vm: test-vm-b
-    spec:
-      domain:
-        devices:
-          disks:
-          - disk:
-              bus: virtio
-            name: containerdisk
-          - disk:
-              bus: virtio
-            name: cloudinitdisk
-          interfaces:
-          - name: default
-            binding:
-              name: l2bridge
-        resources:
-          requests:
-            memory: 1Gi
-            cpu: 1
-      networks:
-      - name: default
-        pod: {}
-      volumes:
-      - name: containerdisk
-        containerDisk:
-          image: quay.io/kubevirt/fedora-cloud-container-disk-demo:latest
-      - name: cloudinitdisk
-        cloudInitNoCloud:
-          userData: |
-            #cloud-config
-            password: fedora
-            chpasswd: { expire: False }
-            ssh_pwauth: True
-            ssh_authorized_keys:
-              - $PUBKEY
-            packages:
-              - httpd
-              - bind-utils
-              - nmap-ncat
-            runcmd:
-              - [systemctl, enable, httpd]
-              - [systemctl, start, httpd]
-              - [/bin/sh, -c, 'echo "<h1>Test VM B - CUDN2</h1><p>Network: cluster-udn-second (10.101.0.0/16)</p><p>IP: \$(hostname -I)</p>" > /var/www/html/index.html']
-EOF
+generate_vm_yaml \
+    "test-vm-b" \
+    "cudn2" \
+    "<h1>Test VM B - CUDN2</h1><p>Network: cluster-udn-second (10.101.0.0/16)</p><p>IP: \$(hostname -I)</p>" \
+    "none" \
+    > tests/test-vm-b.yaml
 echo "✓ test-vm-b.yaml created"
 
 echo "✓ VM configurations updated"
@@ -184,81 +162,21 @@ oc apply -f tests/test-vm-b.yaml
 echo "✓ test-vm-a and test-vm-b created"
 echo
 
-# Wait for test-vm-a to be running so we can get its node
+# Wait for test-vm-a to be running
 echo "Waiting for test-vm-a to be running..."
 oc wait --for=condition=Ready vmi/test-vm-a -n cudn1 --timeout=300s
-VM_A_NODE=$(oc get vmi test-vm-a -n cudn1 -o jsonpath='{.status.nodeName}')
-echo "✓ test-vm-a is running on node: $VM_A_NODE"
+echo "✓ test-vm-a is running"
 echo
 
 # Create test-vm-a-sameworker on the same node as test-vm-a
 echo "Updating test-vm-a-sameworker.yaml..."
-cat > tests/test-vm-a-sameworker.yaml <<EOF
-apiVersion: kubevirt.io/v1
-kind: VirtualMachine
-metadata:
-  name: test-vm-a-sameworker
-  namespace: cudn1
-  labels:
-    app: test-vm
-spec:
-  running: true
-  template:
-    metadata:
-      labels:
-        kubevirt.io/vm: test-vm-a-sameworker
-    spec:
-      affinity:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-            - matchExpressions:
-              - key: kubernetes.io/hostname
-                operator: In
-                values:
-                - $VM_A_NODE
-      domain:
-        devices:
-          disks:
-          - disk:
-              bus: virtio
-            name: containerdisk
-          - disk:
-              bus: virtio
-            name: cloudinitdisk
-          interfaces:
-          - name: default
-            binding:
-              name: l2bridge
-        resources:
-          requests:
-            memory: 1Gi
-            cpu: 1
-      networks:
-      - name: default
-        pod: {}
-      volumes:
-      - name: containerdisk
-        containerDisk:
-          image: quay.io/kubevirt/fedora-cloud-container-disk-demo:latest
-      - name: cloudinitdisk
-        cloudInitNoCloud:
-          userData: |
-            #cloud-config
-            password: fedora
-            chpasswd: { expire: False }
-            ssh_pwauth: True
-            ssh_authorized_keys:
-              - $PUBKEY
-            packages:
-              - httpd
-              - bind-utils
-              - nmap-ncat
-            runcmd:
-              - [systemctl, enable, httpd]
-              - [systemctl, start, httpd]
-              - [/bin/sh, -c, 'echo "<h1>Test VM A2 - CUDN1</h1><p>Network: cluster-udn-prod (10.100.0.0/16)</p><p>Node: $VM_A_NODE</p><p>IP: \$(hostname -I)</p>" > /var/www/html/index.html']
-EOF
+generate_vm_yaml \
+    "test-vm-a-sameworker" \
+    "cudn1" \
+    "<h1>Test VM A2 - CUDN1</h1><p>Network: cluster-udn-prod (10.100.0.0/16)</p><p>IP: \$(hostname -I)</p>" \
+    "same-node" \
+    "test-vm-a" \
+    > tests/test-vm-a-sameworker.yaml
 echo "✓ test-vm-a-sameworker.yaml created"
 
 # Apply test-vm-a-sameworker
@@ -269,73 +187,13 @@ echo
 
 # Create test-vm-a-differentworker on a different node than test-vm-a
 echo "Updating test-vm-a-differentworker.yaml..."
-cat > tests/test-vm-a-differentworker.yaml <<EOF
-apiVersion: kubevirt.io/v1
-kind: VirtualMachine
-metadata:
-  name: test-vm-a-differentworker
-  namespace: cudn1
-  labels:
-    app: test-vm
-spec:
-  running: true
-  template:
-    metadata:
-      labels:
-        kubevirt.io/vm: test-vm-a-differentworker
-    spec:
-      affinity:
-        podAntiAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchExpressions:
-              - key: kubevirt.io/vm
-                operator: In
-                values:
-                - test-vm-a
-            topologyKey: kubernetes.io/hostname
-      domain:
-        devices:
-          disks:
-          - disk:
-              bus: virtio
-            name: containerdisk
-          - disk:
-              bus: virtio
-            name: cloudinitdisk
-          interfaces:
-          - name: default
-            binding:
-              name: l2bridge
-        resources:
-          requests:
-            memory: 1Gi
-            cpu: 1
-      networks:
-      - name: default
-        pod: {}
-      volumes:
-      - name: containerdisk
-        containerDisk:
-          image: quay.io/kubevirt/fedora-cloud-container-disk-demo:latest
-      - name: cloudinitdisk
-        cloudInitNoCloud:
-          userData: |
-            #cloud-config
-            password: fedora
-            chpasswd: { expire: False }
-            ssh_pwauth: True
-            ssh_authorized_keys:
-              - $PUBKEY
-            packages:
-              - httpd
-              - bind-utils
-              - nmap-ncat
-            runcmd:
-              - [systemctl, enable, httpd]
-              - [systemctl, start, httpd]
-              - [/bin/sh, -c, 'echo "<h1>Test VM A Different Worker - CUDN1</h1><p>Network: cluster-udn-prod (10.100.0.0/16)</p><p>IP: \$(hostname -I)</p>" > /var/www/html/index.html']
-EOF
+generate_vm_yaml \
+    "test-vm-a-differentworker" \
+    "cudn1" \
+    "<h1>Test VM A Different Worker - CUDN1</h1><p>Network: cluster-udn-prod (10.100.0.0/16)</p><p>IP: \$(hostname -I)</p>" \
+    "different-node" \
+    "test-vm-a" \
+    > tests/test-vm-a-differentworker.yaml
 echo "✓ test-vm-a-differentworker.yaml created"
 
 # Apply test-vm-a-differentworker
@@ -346,72 +204,14 @@ echo
 
 # Create test-vm-b-sameworker-as-a on the same node as test-vm-a (for isolation testing)
 echo "Updating test-vm-b-sameworker-as-a.yaml..."
-cat > tests/test-vm-b-sameworker-as-a.yaml <<EOF
-apiVersion: kubevirt.io/v1
-kind: VirtualMachine
-metadata:
-  name: test-vm-b-sameworker-as-a
-  namespace: cudn2
-  labels:
-    app: test-vm
-spec:
-  running: true
-  template:
-    metadata:
-      labels:
-        kubevirt.io/vm: test-vm-b-sameworker-as-a
-    spec:
-      affinity:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-            - matchExpressions:
-              - key: kubernetes.io/hostname
-                operator: In
-                values:
-                - $VM_A_NODE
-      domain:
-        devices:
-          disks:
-          - disk:
-              bus: virtio
-            name: containerdisk
-          - disk:
-              bus: virtio
-            name: cloudinitdisk
-          interfaces:
-          - name: default
-            binding:
-              name: l2bridge
-        resources:
-          requests:
-            memory: 1Gi
-            cpu: 1
-      networks:
-      - name: default
-        pod: {}
-      volumes:
-      - name: containerdisk
-        containerDisk:
-          image: quay.io/kubevirt/fedora-cloud-container-disk-demo:latest
-      - name: cloudinitdisk
-        cloudInitNoCloud:
-          userData: |
-            #cloud-config
-            password: fedora
-            chpasswd: { expire: False }
-            ssh_pwauth: True
-            ssh_authorized_keys:
-              - $PUBKEY
-            packages:
-              - httpd
-              - bind-utils
-              - nmap-ncat
-            runcmd:
-              - [systemctl, enable, httpd]
-              - [systemctl, start, httpd]
-              - [/bin/sh, -c, 'echo "<h1>Test VM B Same Worker as A - CUDN2</h1><p>Network: cluster-udn-second (10.101.0.0/16)</p><p>Node: $VM_A_NODE</p><p>IP: \$(hostname -I)</p>" > /var/www/html/index.html']
-EOF
+generate_vm_yaml \
+    "test-vm-b-sameworker-as-a" \
+    "cudn2" \
+    "<h1>Test VM B Same Worker as A - CUDN2</h1><p>Network: cluster-udn-second (10.101.0.0/16)</p><p>IP: \$(hostname -I)</p>" \
+    "same-node" \
+    "test-vm-a" \
+    "cudn1" \
+    > tests/test-vm-b-sameworker-as-a.yaml
 echo "✓ test-vm-b-sameworker-as-a.yaml created"
 
 # Apply test-vm-b-sameworker-as-a
@@ -422,73 +222,14 @@ echo
 
 # Create test-vm-b-differentworker-as-a on a different node than test-vm-a (for isolation testing)
 echo "Updating test-vm-b-differentworker-as-a.yaml..."
-cat > tests/test-vm-b-differentworker-as-a.yaml <<EOF
-apiVersion: kubevirt.io/v1
-kind: VirtualMachine
-metadata:
-  name: test-vm-b-differentworker-as-a
-  namespace: cudn2
-  labels:
-    app: test-vm
-spec:
-  running: true
-  template:
-    metadata:
-      labels:
-        kubevirt.io/vm: test-vm-b-differentworker-as-a
-    spec:
-      affinity:
-        podAntiAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchExpressions:
-              - key: kubevirt.io/vm
-                operator: In
-                values:
-                - test-vm-a
-            topologyKey: kubernetes.io/hostname
-      domain:
-        devices:
-          disks:
-          - disk:
-              bus: virtio
-            name: containerdisk
-          - disk:
-              bus: virtio
-            name: cloudinitdisk
-          interfaces:
-          - name: default
-            binding:
-              name: l2bridge
-        resources:
-          requests:
-            memory: 1Gi
-            cpu: 1
-      networks:
-      - name: default
-        pod: {}
-      volumes:
-      - name: containerdisk
-        containerDisk:
-          image: quay.io/kubevirt/fedora-cloud-container-disk-demo:latest
-      - name: cloudinitdisk
-        cloudInitNoCloud:
-          userData: |
-            #cloud-config
-            password: fedora
-            chpasswd: { expire: False }
-            ssh_pwauth: True
-            ssh_authorized_keys:
-              - $PUBKEY
-            packages:
-              - httpd
-              - bind-utils
-              - nmap-ncat
-            runcmd:
-              - [systemctl, enable, httpd]
-              - [systemctl, start, httpd]
-              - [/bin/sh, -c, 'echo "<h1>Test VM B Different Worker than A - CUDN2</h1><p>Network: cluster-udn-second (10.101.0.0/16)</p><p>IP: \$(hostname -I)</p>" > /var/www/html/index.html']
-EOF
+generate_vm_yaml \
+    "test-vm-b-differentworker-as-a" \
+    "cudn2" \
+    "<h1>Test VM B Different Worker than A - CUDN2</h1><p>Network: cluster-udn-second (10.101.0.0/16)</p><p>IP: \$(hostname -I)</p>" \
+    "different-node" \
+    "test-vm-a" \
+    "cudn1" \
+    > tests/test-vm-b-differentworker-as-a.yaml
 echo "✓ test-vm-b-differentworker-as-a.yaml created"
 
 # Apply test-vm-b-differentworker-as-a
@@ -503,39 +244,7 @@ for namespace in cudn1 cudn2; do
     pod_name="network-jump"
     [ "$namespace" = "cudn2" ] && pod_name="network-jump-cudn2"
 
-    cat <<PODEOF | oc apply -f - >/dev/null
-apiVersion: v1
-kind: Pod
-metadata:
-  name: $pod_name
-  namespace: $namespace
-spec:
-  securityContext:
-    runAsNonRoot: true
-    runAsUser: 1000
-    fsGroup: 1000
-    seccompProfile:
-      type: RuntimeDefault
-  containers:
-  - name: $pod_name
-    image: registry.access.redhat.com/ubi9/toolbox:latest
-    command: ["sleep", "infinity"]
-    securityContext:
-      allowPrivilegeEscalation: false
-      capabilities:
-        drop: ["ALL"]
-      runAsNonRoot: true
-      runAsUser: 1000
-    volumeMounts:
-    - name: ssh-key
-      mountPath: /home/test-user/.ssh
-      readOnly: true
-  volumes:
-  - name: ssh-key
-    secret:
-      secretName: test-vm-ssh-key
-      defaultMode: 0400
-PODEOF
+    generate_jump_pod_yaml "$pod_name" "$namespace" | oc apply -f - >/dev/null
     echo "✓ Jump pod created in $namespace"
 done
 
