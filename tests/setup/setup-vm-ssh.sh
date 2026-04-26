@@ -454,6 +454,116 @@ echo "Creating NodePort test deployment and service (ETP=Local, no local endpoin
 echo "✓ NodePort test deployment and service (ETP=Local, no local endpoint) created"
 echo
 
+# Create NodePort test deployment and service in cudn2 (different CUDN)
+echo "Creating NodePort test deployment and service in cudn2 (different CUDN)..."
+{
+    generate_nodeport_deployment_yaml \
+        "hello-openshift-nodeport-samenode-cudn2" \
+        "cudn2" \
+        "hello-openshift-nodeport-samenode-cudn2" \
+        "same-node" \
+        "test-vm-a" \
+        "cudn1"
+    echo "---"
+    generate_nodeport_service_yaml \
+        "hello-openshift-nodeport-samenode-cudn2" \
+        "cudn2" \
+        "hello-openshift-nodeport-samenode-cudn2" \
+        "Cluster"
+} | oc apply -f -
+echo "✓ NodePort test deployment and service created in cudn2"
+echo
+
+# Create NodePort test deployment and service with different node in cudn2
+echo "Creating NodePort test deployment and service (different node) in cudn2..."
+{
+    generate_nodeport_deployment_yaml \
+        "hello-openshift-nodeport-diffnode-cudn2" \
+        "cudn2" \
+        "hello-openshift-nodeport-diffnode-cudn2" \
+        "different-node" \
+        "test-vm-a" \
+        "cudn1"
+    echo "---"
+    generate_nodeport_service_yaml \
+        "hello-openshift-nodeport-diffnode-cudn2" \
+        "cudn2" \
+        "hello-openshift-nodeport-diffnode-cudn2" \
+        "Cluster"
+} | oc apply -f -
+echo "✓ NodePort test deployment and service (different node) created in cudn2"
+echo
+
+# Create NodePort test deployment and service with Local ETP (same node) in cudn2
+echo "Creating NodePort test deployment and service (ETP=Local, same node) in cudn2..."
+{
+    generate_nodeport_deployment_yaml \
+        "hello-openshift-nodeport-local-samenode-cudn2" \
+        "cudn2" \
+        "hello-openshift-nodeport-local-samenode-cudn2" \
+        "same-node" \
+        "test-vm-a" \
+        "cudn1"
+    echo "---"
+    generate_nodeport_service_yaml \
+        "hello-openshift-nodeport-local-samenode-cudn2" \
+        "cudn2" \
+        "hello-openshift-nodeport-local-samenode-cudn2" \
+        "Local"
+} | oc apply -f -
+echo "✓ NodePort test deployment and service (ETP=Local, same node) created in cudn2"
+echo
+
+# Create NodePort test deployments and service with Local ETP (2 pods: same+diff node) in cudn2
+echo "Creating NodePort test deployments and service (ETP=Local, 2 pods on different nodes) in cudn2..."
+{
+    generate_nodeport_deployment_yaml \
+        "hello-openshift-nodeport-local-diffnode-samenode-cudn2" \
+        "cudn2" \
+        "hello-openshift-nodeport-local-diffnode-cudn2" \
+        "same-node" \
+        "test-vm-a" \
+        "cudn1" \
+        "deployment: samenode"
+    echo "---"
+    generate_nodeport_deployment_yaml \
+        "hello-openshift-nodeport-local-diffnode-diffnode-cudn2" \
+        "cudn2" \
+        "hello-openshift-nodeport-local-diffnode-cudn2" \
+        "different-node" \
+        "test-vm-a" \
+        "cudn1" \
+        "deployment: diffnode"
+    echo "---"
+    generate_nodeport_service_yaml \
+        "hello-openshift-nodeport-local-diffnode-cudn2" \
+        "cudn2" \
+        "hello-openshift-nodeport-local-diffnode-cudn2" \
+        "Local"
+} | oc apply -f -
+echo "✓ NodePort test deployments and service (ETP=Local, 2 pods on different nodes) created in cudn2"
+echo
+
+# Create NodePort test deployment and service with Local ETP (no local endpoint) in cudn2
+echo "Creating NodePort test deployment and service (ETP=Local, no local endpoint) in cudn2..."
+{
+    generate_nodeport_deployment_yaml \
+        "hello-openshift-nodeport-local-nolocal-cudn2" \
+        "cudn2" \
+        "hello-openshift-nodeport-local-nolocal-cudn2" \
+        "different-node" \
+        "test-vm-a" \
+        "cudn1"
+    echo "---"
+    generate_nodeport_service_yaml \
+        "hello-openshift-nodeport-local-nolocal-cudn2" \
+        "cudn2" \
+        "hello-openshift-nodeport-local-nolocal-cudn2" \
+        "Local"
+} | oc apply -f -
+echo "✓ NodePort test deployment and service (ETP=Local, no local endpoint) created in cudn2"
+echo
+
 echo "==================================================================="
 echo "Waiting for all VMs to be ready..."
 echo "==================================================================="
