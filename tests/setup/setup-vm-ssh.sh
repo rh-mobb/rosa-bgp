@@ -9,6 +9,7 @@ TEMPLATE_FILE="tests/setup/templates/vm-template.yaml"
 JUMP_POD_TEMPLATE="tests/setup/templates/jump-pod-template.yaml"
 NODEPORT_DEPLOYMENT_TEMPLATE="tests/setup/templates/nodeport-deployment-template.yaml"
 NODEPORT_SERVICE_TEMPLATE="tests/setup/templates/nodeport-service-template.yaml"
+CLUSTERIP_SERVICE_TEMPLATE="tests/setup/templates/clusterip-service-template.yaml"
 
 # Generate jump pod YAML from template
 # Usage: generate_jump_pod_yaml <pod_name> <namespace>
@@ -177,6 +178,25 @@ generate_nodeport_service_yaml() {
 
     # Generate YAML from template
     envsubst < "$NODEPORT_SERVICE_TEMPLATE"
+}
+
+# Generate ClusterIP service YAML from template
+# Usage: generate_clusterip_service_yaml <service_name> <namespace> <app_label> <internal_traffic_policy>
+# internal_traffic_policy: "Cluster" or "Local"
+generate_clusterip_service_yaml() {
+    local service_name=$1
+    local namespace=$2
+    local app_label=$3
+    local internal_traffic_policy=$4
+
+    # Export variables for envsubst
+    export SERVICE_NAME="$service_name"
+    export SERVICE_NAMESPACE="$namespace"
+    export APP_LABEL="$app_label"
+    export INTERNAL_TRAFFIC_POLICY="$internal_traffic_policy"
+
+    # Generate YAML from template
+    envsubst < "$CLUSTERIP_SERVICE_TEMPLATE"
 }
 
 echo "==================================================================="
@@ -452,6 +472,82 @@ echo "Creating NodePort test deployment and service (ETP=Local, no local endpoin
         "Local"
 } | oc apply -f -
 echo "✓ NodePort test deployment and service (ETP=Local, no local endpoint) created"
+echo
+
+# Create ClusterIP test deployment and service in cudn1
+echo "Creating ClusterIP test deployment and service in cudn1..."
+{
+    generate_nodeport_deployment_yaml \
+        "hello-openshift-clusterip-samenode" \
+        "cudn1" \
+        "hello-openshift-clusterip-samenode" \
+        "same-node" \
+        "test-vm-a"
+    echo "---"
+    generate_clusterip_service_yaml \
+        "hello-openshift-clusterip-samenode" \
+        "cudn1" \
+        "hello-openshift-clusterip-samenode" \
+        "Cluster"
+} | oc apply -f -
+echo "✓ ClusterIP test deployment and service created"
+echo
+
+# Create ClusterIP test deployment and service with different node in cudn1
+echo "Creating ClusterIP test deployment and service (different node) in cudn1..."
+{
+    generate_nodeport_deployment_yaml \
+        "hello-openshift-clusterip-diffnode" \
+        "cudn1" \
+        "hello-openshift-clusterip-diffnode" \
+        "different-node" \
+        "test-vm-a"
+    echo "---"
+    generate_clusterip_service_yaml \
+        "hello-openshift-clusterip-diffnode" \
+        "cudn1" \
+        "hello-openshift-clusterip-diffnode" \
+        "Cluster"
+} | oc apply -f -
+echo "✓ ClusterIP test deployment and service (different node) created"
+echo
+
+# Create ClusterIP test deployment and service with Local ITP (same node) in cudn1
+echo "Creating ClusterIP test deployment and service (ITP=Local, same node) in cudn1..."
+{
+    generate_nodeport_deployment_yaml \
+        "hello-openshift-clusterip-local-samenode" \
+        "cudn1" \
+        "hello-openshift-clusterip-local-samenode" \
+        "same-node" \
+        "test-vm-a"
+    echo "---"
+    generate_clusterip_service_yaml \
+        "hello-openshift-clusterip-local-samenode" \
+        "cudn1" \
+        "hello-openshift-clusterip-local-samenode" \
+        "Local"
+} | oc apply -f -
+echo "✓ ClusterIP test deployment and service (ITP=Local, same node) created"
+echo
+
+# Create ClusterIP test deployment and service with Local ITP (different node) in cudn1
+echo "Creating ClusterIP test deployment and service (ITP=Local, different node) in cudn1..."
+{
+    generate_nodeport_deployment_yaml \
+        "hello-openshift-clusterip-local-diffnode" \
+        "cudn1" \
+        "hello-openshift-clusterip-local-diffnode" \
+        "different-node" \
+        "test-vm-a"
+    echo "---"
+    generate_clusterip_service_yaml \
+        "hello-openshift-clusterip-local-diffnode" \
+        "cudn1" \
+        "hello-openshift-clusterip-local-diffnode" \
+        "Local"
+} | oc apply -f -
+echo "✓ ClusterIP test deployment and service (ITP=Local, different node) created"
 echo
 
 # Create NodePort test deployment and service in cudn2 (different CUDN)
