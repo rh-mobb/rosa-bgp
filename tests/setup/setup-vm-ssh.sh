@@ -7,6 +7,8 @@ set -e
 KEYFILE="tests/test-vm-key"
 TEMPLATE_FILE="tests/setup/templates/vm-template.yaml"
 JUMP_POD_TEMPLATE="tests/setup/templates/jump-pod-template.yaml"
+NODEPORT_DEPLOYMENT_TEMPLATE="tests/setup/templates/nodeport-deployment-template.yaml"
+NODEPORT_SERVICE_TEMPLATE="tests/setup/templates/nodeport-service-template.yaml"
 
 # Generate jump pod YAML from template
 # Usage: generate_jump_pod_yaml <pod_name> <namespace>
@@ -84,6 +86,97 @@ generate_vm_yaml() {
 
     # Generate YAML from template
     envsubst < "$TEMPLATE_FILE"
+}
+
+# Generate NodePort deployment YAML from template
+# Usage: generate_nodeport_deployment_yaml <deployment_name> <namespace> <app_label> <affinity_type> [target_vm] [target_namespace] [deployment_label]
+# affinity_type: "none", "same-node", "different-node"
+# target_vm: VM name to use for pod affinity/anti-affinity (required for same-node/different-node)
+# target_namespace: Namespace of target VM (defaults to same as deployment namespace)
+# deployment_label: Optional additional label for deployment selector (e.g., "deployment: samenode")
+generate_nodeport_deployment_yaml() {
+    local deployment_name=$1
+    local namespace=$2
+    local app_label=$3
+    local affinity_type=$4
+    local target_vm=$5
+    local target_namespace=${6:-$namespace}
+    local deployment_label=$7
+
+    # Generate affinity YAML based on type
+    local affinity_yaml=""
+    local affinity_kind=""
+
+    case "$affinity_type" in
+        "same-node")
+            affinity_kind="podAffinity"
+            ;;
+        "different-node")
+            affinity_kind="podAntiAffinity"
+            ;;
+        *)
+            affinity_kind=""
+            ;;
+    esac
+
+    if [ -n "$affinity_kind" ]; then
+        # Add namespaces field if target is in a different namespace
+        local namespaces_yaml=""
+        if [ "$target_namespace" != "$namespace" ]; then
+            namespaces_yaml="
+            namespaces:
+            - $target_namespace"
+        fi
+
+        affinity_yaml="      affinity:
+        $affinity_kind:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: kubevirt.io/vm
+                operator: In
+                values:
+                - $target_vm$namespaces_yaml
+            topologyKey: kubernetes.io/hostname"
+    fi
+
+    # Generate deployment label YAML if provided
+    local selector_label_yaml=""
+    local template_label_yaml=""
+    if [ -n "$deployment_label" ]; then
+        selector_label_yaml="      $deployment_label"
+        template_label_yaml="        $deployment_label"
+    fi
+
+    # Export variables for envsubst
+    export DEPLOYMENT_NAME="$deployment_name"
+    export DEPLOYMENT_NAMESPACE="$namespace"
+    export APP_LABEL="$app_label"
+    export AFFINITY_YAML="$affinity_yaml"
+    export SELECTOR_LABEL_YAML="$selector_label_yaml"
+    export TEMPLATE_LABEL_YAML="$template_label_yaml"
+
+    # Generate YAML from template
+    envsubst < "$NODEPORT_DEPLOYMENT_TEMPLATE"
+}
+
+# Generate NodePort service YAML from template
+# Usage: generate_nodeport_service_yaml <service_name> <namespace> <app_label> <external_traffic_policy>
+# external_traffic_policy: "Cluster" or "Local"
+generate_nodeport_service_yaml() {
+    local service_name=$1
+    local namespace=$2
+    local app_label=$3
+    local external_traffic_policy=$4
+
+    # Export variables for envsubst
+    export SERVICE_NAME="$service_name"
+    export SERVICE_NAMESPACE="$namespace"
+    export APP_LABEL="$app_label"
+    export EXTERNAL_TRAFFIC_POLICY="$external_traffic_policy"
+
+    # Generate YAML from template
+    envsubst < "$NODEPORT_SERVICE_TEMPLATE"
 }
 
 echo "==================================================================="
@@ -257,314 +350,107 @@ echo
 
 # Create NodePort test deployment and service in cudn1
 echo "Creating NodePort test deployment and service in cudn1..."
-cat <<EOF | oc apply -f -
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: hello-openshift-nodeport-samenode
-  namespace: cudn1
-  labels:
-    app: hello-openshift-nodeport-samenode
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: hello-openshift-nodeport-samenode
-  template:
-    metadata:
-      labels:
-        app: hello-openshift-nodeport-samenode
-    spec:
-      affinity:
-        podAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchExpressions:
-              - key: kubevirt.io/vm
-                operator: In
-                values:
-                - test-vm-a
-            topologyKey: kubernetes.io/hostname
-      containers:
-      - name: hello-openshift
-        image: openshift/hello-openshift
-        ports:
-        - containerPort: 8080
-          protocol: TCP
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: hello-openshift-nodeport-samenode
-  namespace: cudn1
-spec:
-  type: NodePort
-  externalTrafficPolicy: Cluster
-  selector:
-    app: hello-openshift-nodeport-samenode
-  ports:
-  - protocol: TCP
-    port: 8080
-    targetPort: 8080
-EOF
+{
+    generate_nodeport_deployment_yaml \
+        "hello-openshift-nodeport-samenode" \
+        "cudn1" \
+        "hello-openshift-nodeport-samenode" \
+        "same-node" \
+        "test-vm-a"
+    echo "---"
+    generate_nodeport_service_yaml \
+        "hello-openshift-nodeport-samenode" \
+        "cudn1" \
+        "hello-openshift-nodeport-samenode" \
+        "Cluster"
+} | oc apply -f -
 echo "✓ NodePort test deployment and service created"
 echo
 
 # Create NodePort test deployment and service with different node in cudn1
 echo "Creating NodePort test deployment and service (different node) in cudn1..."
-cat <<EOF | oc apply -f -
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: hello-openshift-nodeport-diffnode
-  namespace: cudn1
-  labels:
-    app: hello-openshift-nodeport-diffnode
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: hello-openshift-nodeport-diffnode
-  template:
-    metadata:
-      labels:
-        app: hello-openshift-nodeport-diffnode
-    spec:
-      affinity:
-        podAntiAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchExpressions:
-              - key: kubevirt.io/vm
-                operator: In
-                values:
-                - test-vm-a
-            topologyKey: kubernetes.io/hostname
-      containers:
-      - name: hello-openshift
-        image: openshift/hello-openshift
-        ports:
-        - containerPort: 8080
-          protocol: TCP
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: hello-openshift-nodeport-diffnode
-  namespace: cudn1
-spec:
-  type: NodePort
-  externalTrafficPolicy: Cluster
-  selector:
-    app: hello-openshift-nodeport-diffnode
-  ports:
-  - protocol: TCP
-    port: 8080
-    targetPort: 8080
-EOF
+{
+    generate_nodeport_deployment_yaml \
+        "hello-openshift-nodeport-diffnode" \
+        "cudn1" \
+        "hello-openshift-nodeport-diffnode" \
+        "different-node" \
+        "test-vm-a"
+    echo "---"
+    generate_nodeport_service_yaml \
+        "hello-openshift-nodeport-diffnode" \
+        "cudn1" \
+        "hello-openshift-nodeport-diffnode" \
+        "Cluster"
+} | oc apply -f -
 echo "✓ NodePort test deployment and service (different node) created"
 echo
 
 # Create NodePort test deployment and service with Local ETP (same node) in cudn1
 echo "Creating NodePort test deployment and service (ETP=Local, same node) in cudn1..."
-cat <<EOF | oc apply -f -
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: hello-openshift-nodeport-local-samenode
-  namespace: cudn1
-  labels:
-    app: hello-openshift-nodeport-local-samenode
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: hello-openshift-nodeport-local-samenode
-  template:
-    metadata:
-      labels:
-        app: hello-openshift-nodeport-local-samenode
-    spec:
-      affinity:
-        podAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchExpressions:
-              - key: kubevirt.io/vm
-                operator: In
-                values:
-                - test-vm-a
-            topologyKey: kubernetes.io/hostname
-      containers:
-      - name: hello-openshift
-        image: openshift/hello-openshift
-        ports:
-        - containerPort: 8080
-          protocol: TCP
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: hello-openshift-nodeport-local-samenode
-  namespace: cudn1
-spec:
-  type: NodePort
-  externalTrafficPolicy: Local
-  selector:
-    app: hello-openshift-nodeport-local-samenode
-  ports:
-  - protocol: TCP
-    port: 8080
-    targetPort: 8080
-EOF
+{
+    generate_nodeport_deployment_yaml \
+        "hello-openshift-nodeport-local-samenode" \
+        "cudn1" \
+        "hello-openshift-nodeport-local-samenode" \
+        "same-node" \
+        "test-vm-a"
+    echo "---"
+    generate_nodeport_service_yaml \
+        "hello-openshift-nodeport-local-samenode" \
+        "cudn1" \
+        "hello-openshift-nodeport-local-samenode" \
+        "Local"
+} | oc apply -f -
 echo "✓ NodePort test deployment and service (ETP=Local, same node) created"
 echo
 
 # Create NodePort test deployments and service with Local ETP (2 pods: same+diff node) in cudn1
 echo "Creating NodePort test deployments and service (ETP=Local, 2 pods on different nodes) in cudn1..."
-cat <<EOF | oc apply -f -
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: hello-openshift-nodeport-local-diffnode-samenode
-  namespace: cudn1
-  labels:
-    app: hello-openshift-nodeport-local-diffnode
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: hello-openshift-nodeport-local-diffnode
-      deployment: samenode
-  template:
-    metadata:
-      labels:
-        app: hello-openshift-nodeport-local-diffnode
-        deployment: samenode
-    spec:
-      affinity:
-        podAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchExpressions:
-              - key: kubevirt.io/vm
-                operator: In
-                values:
-                - test-vm-a
-            topologyKey: kubernetes.io/hostname
-      containers:
-      - name: hello-openshift
-        image: openshift/hello-openshift
-        ports:
-        - containerPort: 8080
-          protocol: TCP
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: hello-openshift-nodeport-local-diffnode-diffnode
-  namespace: cudn1
-  labels:
-    app: hello-openshift-nodeport-local-diffnode
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: hello-openshift-nodeport-local-diffnode
-      deployment: diffnode
-  template:
-    metadata:
-      labels:
-        app: hello-openshift-nodeport-local-diffnode
-        deployment: diffnode
-    spec:
-      affinity:
-        podAntiAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchExpressions:
-              - key: kubevirt.io/vm
-                operator: In
-                values:
-                - test-vm-a
-            topologyKey: kubernetes.io/hostname
-      containers:
-      - name: hello-openshift
-        image: openshift/hello-openshift
-        ports:
-        - containerPort: 8080
-          protocol: TCP
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: hello-openshift-nodeport-local-diffnode
-  namespace: cudn1
-spec:
-  type: NodePort
-  externalTrafficPolicy: Local
-  selector:
-    app: hello-openshift-nodeport-local-diffnode
-  ports:
-  - protocol: TCP
-    port: 8080
-    targetPort: 8080
-EOF
+{
+    generate_nodeport_deployment_yaml \
+        "hello-openshift-nodeport-local-diffnode-samenode" \
+        "cudn1" \
+        "hello-openshift-nodeport-local-diffnode" \
+        "same-node" \
+        "test-vm-a" \
+        "cudn1" \
+        "deployment: samenode"
+    echo "---"
+    generate_nodeport_deployment_yaml \
+        "hello-openshift-nodeport-local-diffnode-diffnode" \
+        "cudn1" \
+        "hello-openshift-nodeport-local-diffnode" \
+        "different-node" \
+        "test-vm-a" \
+        "cudn1" \
+        "deployment: diffnode"
+    echo "---"
+    generate_nodeport_service_yaml \
+        "hello-openshift-nodeport-local-diffnode" \
+        "cudn1" \
+        "hello-openshift-nodeport-local-diffnode" \
+        "Local"
+} | oc apply -f -
 echo "✓ NodePort test deployments and service (ETP=Local, 2 pods on different nodes) created"
 echo
 
 # Create NodePort test deployment and service with Local ETP (no local endpoint) in cudn1
 echo "Creating NodePort test deployment and service (ETP=Local, no local endpoint) in cudn1..."
-cat <<EOF | oc apply -f -
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: hello-openshift-nodeport-local-nolocal
-  namespace: cudn1
-  labels:
-    app: hello-openshift-nodeport-local-nolocal
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: hello-openshift-nodeport-local-nolocal
-  template:
-    metadata:
-      labels:
-        app: hello-openshift-nodeport-local-nolocal
-    spec:
-      affinity:
-        podAntiAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchExpressions:
-              - key: kubevirt.io/vm
-                operator: In
-                values:
-                - test-vm-a
-            topologyKey: kubernetes.io/hostname
-      containers:
-      - name: hello-openshift
-        image: openshift/hello-openshift
-        ports:
-        - containerPort: 8080
-          protocol: TCP
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: hello-openshift-nodeport-local-nolocal
-  namespace: cudn1
-spec:
-  type: NodePort
-  externalTrafficPolicy: Local
-  selector:
-    app: hello-openshift-nodeport-local-nolocal
-  ports:
-  - protocol: TCP
-    port: 8080
-    targetPort: 8080
-EOF
+{
+    generate_nodeport_deployment_yaml \
+        "hello-openshift-nodeport-local-nolocal" \
+        "cudn1" \
+        "hello-openshift-nodeport-local-nolocal" \
+        "different-node" \
+        "test-vm-a"
+    echo "---"
+    generate_nodeport_service_yaml \
+        "hello-openshift-nodeport-local-nolocal" \
+        "cudn1" \
+        "hello-openshift-nodeport-local-nolocal" \
+        "Local"
+} | oc apply -f -
 echo "✓ NodePort test deployment and service (ETP=Local, no local endpoint) created"
 echo
 
