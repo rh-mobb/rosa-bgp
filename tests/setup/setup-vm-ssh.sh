@@ -564,6 +564,122 @@ echo "Creating NodePort test deployment and service (ETP=Local, no local endpoin
 echo "✓ NodePort test deployment and service (ETP=Local, no local endpoint) created in cudn2"
 echo
 
+# Create regular-network namespace (no CUDN)
+echo "Creating regular-network namespace (default pod network only)..."
+oc create namespace regular-network --dry-run=client -o yaml | oc apply -f -
+echo "✓ regular-network namespace created"
+echo
+
+# Create NodePort test deployment and service in regular-network
+echo "Creating NodePort test deployment and service in regular-network (default pod network)..."
+{
+    generate_nodeport_deployment_yaml \
+        "hello-openshift-nodeport-samenode-regular" \
+        "regular-network" \
+        "hello-openshift-nodeport-samenode-regular" \
+        "same-node" \
+        "test-vm-a" \
+        "cudn1"
+    echo "---"
+    generate_nodeport_service_yaml \
+        "hello-openshift-nodeport-samenode-regular" \
+        "regular-network" \
+        "hello-openshift-nodeport-samenode-regular" \
+        "Cluster"
+} | oc apply -f -
+echo "✓ NodePort test deployment and service created in regular-network"
+echo
+
+# Create NodePort test deployment and service with different node in regular-network
+echo "Creating NodePort test deployment and service (different node) in regular-network..."
+{
+    generate_nodeport_deployment_yaml \
+        "hello-openshift-nodeport-diffnode-regular" \
+        "regular-network" \
+        "hello-openshift-nodeport-diffnode-regular" \
+        "different-node" \
+        "test-vm-a" \
+        "cudn1"
+    echo "---"
+    generate_nodeport_service_yaml \
+        "hello-openshift-nodeport-diffnode-regular" \
+        "regular-network" \
+        "hello-openshift-nodeport-diffnode-regular" \
+        "Cluster"
+} | oc apply -f -
+echo "✓ NodePort test deployment and service (different node) created in regular-network"
+echo
+
+# Create NodePort test deployment and service with Local ETP (same node) in regular-network
+echo "Creating NodePort test deployment and service (ETP=Local, same node) in regular-network..."
+{
+    generate_nodeport_deployment_yaml \
+        "hello-openshift-nodeport-local-samenode-regular" \
+        "regular-network" \
+        "hello-openshift-nodeport-local-samenode-regular" \
+        "same-node" \
+        "test-vm-a" \
+        "cudn1"
+    echo "---"
+    generate_nodeport_service_yaml \
+        "hello-openshift-nodeport-local-samenode-regular" \
+        "regular-network" \
+        "hello-openshift-nodeport-local-samenode-regular" \
+        "Local"
+} | oc apply -f -
+echo "✓ NodePort test deployment and service (ETP=Local, same node) created in regular-network"
+echo
+
+# Create NodePort test deployments and service with Local ETP (2 pods: same+diff node) in regular-network
+echo "Creating NodePort test deployments and service (ETP=Local, 2 pods on different nodes) in regular-network..."
+{
+    generate_nodeport_deployment_yaml \
+        "hello-openshift-nodeport-local-diffnode-samenode-regular" \
+        "regular-network" \
+        "hello-openshift-nodeport-local-diffnode-regular" \
+        "same-node" \
+        "test-vm-a" \
+        "cudn1" \
+        "deployment: samenode"
+    echo "---"
+    generate_nodeport_deployment_yaml \
+        "hello-openshift-nodeport-local-diffnode-diffnode-regular" \
+        "regular-network" \
+        "hello-openshift-nodeport-local-diffnode-regular" \
+        "different-node" \
+        "test-vm-a" \
+        "cudn1" \
+        "deployment: diffnode"
+    echo "---"
+    generate_nodeport_service_yaml \
+        "hello-openshift-nodeport-local-diffnode-regular" \
+        "regular-network" \
+        "hello-openshift-nodeport-local-diffnode-regular" \
+        "Local"
+} | oc apply -f -
+echo "✓ NodePort test deployments and service (ETP=Local, 2 pods on different nodes) created in regular-network"
+echo
+
+# Create NodePort test deployment and service with Local ETP (no local endpoint) in regular-network
+echo "Creating NodePort test deployment and service (ETP=Local, no local endpoint) in regular-network..."
+{
+    generate_nodeport_deployment_yaml \
+        "hello-openshift-nodeport-local-nolocal-regular" \
+        "regular-network" \
+        "hello-openshift-nodeport-local-nolocal-regular" \
+        "different-node" \
+        "test-vm-a" \
+        "cudn1"
+    echo "---"
+    generate_nodeport_service_yaml \
+        "hello-openshift-nodeport-local-nolocal-regular" \
+        "regular-network" \
+        "hello-openshift-nodeport-local-nolocal-regular" \
+        "Local"
+} | oc apply -f -
+echo "✓ NodePort test deployment and service (ETP=Local, no local endpoint) created in regular-network"
+echo
+
 echo "==================================================================="
 echo "Waiting for all VMs to be ready..."
 echo "==================================================================="
