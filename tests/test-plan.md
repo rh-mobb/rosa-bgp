@@ -1,7 +1,7 @@
 * Connectivity - for each test case, verify the following work from source to destination: ping (except to k8s services), curl
     * VM with primary CUDN - Uses a VM in CUDN A, and a second VM in CUDN B
         * CUDN VM A/B traffic to Internet - expected to succeed - PASS
-        * CUDN VM A/B DNS lookups to Internet UDP/TCP - expected to succeed
+        * CUDN VM A/B DNS lookups to Internet UDP/TCP - expected to succeed - PASS
         * EC2 instance in same VPC to CUDN A/B VM - expected to succeed - PASS
             * Note: A flapping problem was observed in bidirectional communication between a VM and an EC2 instance on 4.20.17, but is fixed by 4.21.8. This was originally believed to be because of live migration, but that was a red herring. Traffic was egressing from the CUDN through nodes that were not `bgp_router` nodes, and seemed to be stopping at the ENI, likely because of some combination of src/dest checks and security groups. The expected behavior is that traffic egresses from the same node the VM is on.
             * Not yet tested: Packet loss after 15 min of pings to confirm the flapping problem is not happening.
@@ -9,33 +9,23 @@
         * CUDN VM A/B to EC2 instance in same VPC - expected to succeed - PASS
         * CUDN VM A/B to transit gateway to EC2 instance in external VPC - expected to succeed - PASS
         * CUDN VM A/B to kapi - expected to succeed - PASS
-            * Public API hostname tested: `api.ds-bgp.0w32.p3.openshiftapps.com`
             * Kubernetes service ClusterIP tested: `172.30.0.1`
             * TCP/HTTPS connectivity to kapi succeeded
             * `/version` and `/readyz` returned 200
             * `GET /` returned 403 as `system:anonymous`, which is expected for unauthenticated access
-        * CUDN VM A/B to kube dns UDP/TCP - expected to succeed - PARTIAL (test results below did not explicitly specify UDP or TCP)
+        * CUDN VM A/B to kube dns UDP/TCP - expected to succeed - PASS
             * VM DNS server is `172.30.0.10`
-            * reachability to DNS server:
-                * `nc -vz 172.30.0.10 53` - PASS
-            * name resolution:
-                * `api.ds-bgp.0w32.p3.openshiftapps.com` - PASS
-                * `kubernetes.default.svc.cluster.local` - FAIL from VM
-                    * Note: only this one cluster-internal service name was tested; this does not prove all cluster-internal names fail
-                    * Note: QE was able to nslookup kubernetes.default.svc.cluster.local from within a pod in a CUDN, so this may be specific to VMs.
-        * CUDN VM A/B to port on worker node host API service
+            * reachability to DNS server via nc over UDP and TCP - PASS
+            * name resolution: `kubernetes.default.svc.cluster.local` over UDP/TCP - PASS
+        * CUDN VM A/B to port on worker node host API service - expected to succeed - PASS
+            * Curl to kubelet healthz endpoint on worker:10250/healthz - PASS
             * Note: See [tests/qe-pod-worker-node-service.txt](tests/qe-pod-worker-node-service.txt) for what QE tried previously
-        * CUDN A VM to CUDN A VM (on the same node) - expected to succeed
+        * CUDN A VM to CUDN A VM (on the same node) - expected to succeed - PASS
         * CUDN A VM to CUDN A VM (on a different node) - expected to succeed - PASS
         * CUDN A VM to CUDN A VM (different node) - expected to succeed - PASS
-            * vm0: 10.100.0.10 on ip-10-0-1-238.ca-central-1.compute.internal
-            * vm1: 10.100.0.11 on ip-10-0-2-18.ca-central-1.compute.internal
-            * ping: PASS
-            * nc 8081: PASS
-            * curl http://10.100.0.11:8081: PASS (HTTP 200 OK)
         * CUDN A VM to CUDN B VM (on the same node) - expected to not succeed - PASS
             * This was with advertised-udn-isolation-mode set to strict, the default. It's possible there would be a different result if it were set to loose.
-        * CUDN A VM to CUDN B VM (on a different node) - expected to not succeed - PASS- expected to succeed
+        * CUDN A VM to CUDN B VM (on a different node) - expected to not succeed - PASS
         * Worker node (via `oc debug node`) same host to CUDN A/B VM - expected to not succeed - PASS
             * UDNs are expected to isolate networking even on the same host
         * Worker node (via `oc debug node`) diff host to CUDN A/B VM - expected to not succeed - PASS
@@ -43,22 +33,27 @@
     * ClusterIP Service with same L2 network
         * CUDN VM to clusterIP(internalTrafficPolicy=Cluster) with same node - expected to succeed - PASS
         * CUDN VM to clusterIP(internalTrafficPolicy=Cluster) with diff node - expected to succeed - PASS
-        * CUDN VM to clusterIP(internalTrafficPolicy=Local) with same node - expected to succeed - FAIL
-            * Possibly covered by https://redhat.atlassian.net/browse/OCPBUGS-59693
-            * This has also worked for QE in the past with pods, so may be specific to VMs.
+        * CUDN VM to clusterIP(internalTrafficPolicy=Local) with same node - expected to succeed - PASS
         * CUDN VM to clusterIP(internalTrafficPolicy=Local) with diff node - expected to not succeed - PASS
     * NodePort Service with same L2 network
-        * CUDN VM to NodePort(ETP=Cluster) with same node - expected to succeed
-        * CUDN VM to NodePort(ETP=Cluster) with diff node - expected to succeed
-        * CUDN VM to NodePort(ETP=Local) with same node - expected to succeed
-        * CUDN VM to NodePort(ETP=Local) with diff node (destionation with two backend pods/VMs, one is same as source VM, one is different) - expected to succeed
-        * CUDN VM to NodePort(ETP=Local) with diff node (the source VM is different from any destinaton endpoints nodes) - expected to not succeed
+        * CUDN VM to NodePort(ETP=Cluster) with same node - expected to succeed - PASS
+        * CUDN VM to NodePort(ETP=Cluster) with diff node - expected to succeed - PASS
+        * CUDN VM to NodePort(ETP=Local) with same node - expected to succeed - PASS
+        * CUDN VM to NodePort(ETP=Local) with diff node (destination with two backend pods/VMs, one is same as source VM, one is different) - expected to succeed - PASS
+        * CUDN VM to NodePort(ETP=Local) with diff node (the source VM is different from any destinaton endpoints nodes) - expected to not succeed - PASS
+            * Note: must have ITP=Cluster AND ETP=Local for traffic to not be passed. When ITP not set, traffic is passed.
     * NodePort service with different L2 network
-        * CUDN VM to NodePort(ETP=Cluster) with same node - expected not to succeed
-        * CUDN VM to NodePort(ETP=Cluster) with diff node - expected to succeed
-        * CUDN VM to NodePort(ETP=Local) with same node - expected not to succeed
-        * CUDN VM to NodePort(ETP=Local) with diff node (destination with two backend VMs, one is same as source VM, one is different) - expected to succeed
+        * CUDN VM to NodePort(ETP=Cluster) with same node - expected not to succeed - PASS TODO
+        * CUDN VM to NodePort(ETP=Cluster) with diff node - expected to succeed - PASS TODO
+        * CUDN VM to NodePort(ETP=Local) with same node - expected not to succeed - PASS
         * CUDN VM to NodePort(ETP=Local) with diff node (the source VM is different from any destinaton endpoints nodes) - expected not to succeed
+    * NodePort service on default pod network
+        * CUDN VM to NodePort(ETP=Cluster) with same node - expected not to succeed - PASS
+        * CUDN VM to NodePort(ETP=Cluster) with diff node - expected not to succeed - PASS
+        * CUDN VM to NodePort(ETP=Local) with same node - expected not to succeed - PASS
+        * CUDN VM to NodePort(ETP=Local) with diff node (destination with two backend pods, one is same as source VM, one is different) - expected to not succeed - PASS
+        * CUDN VM to NodePort(ETP=Local) with diff node (the source VM is different from any destinaton endpoints nodes) - expected to not succeed - PASS
+            * Note: Tested with ITP=Cluster AND ETP=Local
 * Connectivity through node lifecycle events
     * Failure of worker node that is the route next hop (simulate by forcing termination through EC2 console). Traffic should continue being passed.
         * CUDN VM to EC2 instance in same VPC - expected to succeed - PASS
