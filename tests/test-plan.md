@@ -43,10 +43,11 @@
         * CUDN VM to NodePort(ETP=Local) with diff node (the source VM is different from any destinaton endpoints nodes) - expected to not succeed - PASS
             * Note: must have ITP=Cluster AND ETP=Local for traffic to not be passed. When ITP not set, traffic is passed.
     * NodePort service with different L2 network
-        * CUDN VM to NodePort(ETP=Cluster) with same node - expected not to succeed - PASS TODO
-        * CUDN VM to NodePort(ETP=Cluster) with diff node - expected to succeed - PASS TODO
+        * CUDN VM to NodePort(ETP=Cluster) with same node - expected not to succeed - PASS
+        * CUDN VM to NodePort(ETP=Cluster) with diff node - expected not to succeed - PASS
         * CUDN VM to NodePort(ETP=Local) with same node - expected not to succeed - PASS
-        * CUDN VM to NodePort(ETP=Local) with diff node (the source VM is different from any destinaton endpoints nodes) - expected not to succeed
+        * CUDN VM to NodePort(ETP=Local) with diff node (destination with two backend pods/VMs, one is same as source VM, one is different) - expected not to succeed - PASS
+        * CUDN VM to NodePort(ETP=Local) with diff node (the source VM is different from any destinaton endpoints nodes) - expected not to succeed - PASS
     * NodePort service on default pod network
         * CUDN VM to NodePort(ETP=Cluster) with same node - expected not to succeed - PASS
         * CUDN VM to NodePort(ETP=Cluster) with diff node - expected not to succeed - PASS

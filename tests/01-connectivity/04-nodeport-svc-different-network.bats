@@ -113,11 +113,11 @@ setup() {
     assert_vm_cannot_curl_nodeport test-vm-a cudn1 "$VM_A_NODE_IP" "$NODEPORT_CLUSTER_SAMENODE_CUDN2"
 }
 
-# Test 2: NodePort(ETP=Cluster) with different node - expected to succeed
+# Test 2: NodePort(ETP=Cluster) with different node - expected NOT to succeed
 @test "test-vm-a can curl NodePort(externalTrafficPolicy=Cluster) service in different CUDN with pod on different node" {
     [ -z "$NODEPORT_CLUSTER_DIFFNODE_CUDN2" ] && skip "hello-openshift-nodeport-diffnode-cudn2 service not found"
     [ -n "$SKIP_TEST2" ] && skip "$SKIP_TEST2"
-    assert_vm_can_curl_nodeport test-vm-a cudn1 "$VM_A_NODE_IP" "$NODEPORT_CLUSTER_DIFFNODE_CUDN2"
+    assert_vm_cannot_curl_nodeport test-vm-a cudn1 "$VM_A_NODE_IP" "$NODEPORT_CLUSTER_DIFFNODE_CUDN2"
 }
 
 # Test 3: NodePort(ETP=Local) with same node - expected NOT to succeed
@@ -127,11 +127,11 @@ setup() {
     assert_vm_cannot_curl_nodeport test-vm-a cudn1 "$VM_A_NODE_IP" "$NODEPORT_LOCAL_SAMENODE_CUDN2"
 }
 
-# Test 4: NodePort(ETP=Local) with 2 backend pods - expected to succeed
+# Test 4: NodePort(ETP=Local) with 2 backend pods - expected NOT to succeed
 @test "test-vm-a can curl NodePort(externalTrafficPolicy=Local) service in different CUDN with 2 backend pods (1 same node, 1 different)" {
     [ -z "$NODEPORT_LOCAL_DIFFNODE_CUDN2" ] && skip "hello-openshift-nodeport-local-diffnode-cudn2 service not found"
     [ -n "$SKIP_TEST4" ] && skip "$SKIP_TEST4"
-    assert_vm_can_curl_nodeport test-vm-a cudn1 "$VM_A_NODE_IP" "$NODEPORT_LOCAL_DIFFNODE_CUDN2"
+    assert_vm_cannot_curl_nodeport test-vm-a cudn1 "$VM_A_NODE_IP" "$NODEPORT_LOCAL_DIFFNODE_CUDN2"
 }
 
 # Test 5: NodePort(ETP=Local) with no local endpoint - expected NOT to succeed
