@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${DEPLOYMENT_NAME}
+  namespace: ${DEPLOYMENT_NAMESPACE}
+  labels:
+    app: ${APP_LABEL}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ${APP_LABEL}
+${SELECTOR_LABEL_YAML}
+  template:
+    metadata:
+      labels:
+        app: ${APP_LABEL}
+${TEMPLATE_LABEL_YAML}
+    spec:
+${AFFINITY_YAML}
+      containers:
+      - name: hello-openshift
+        image: openshift/hello-openshift
+        ports:
+        - containerPort: 8080
+          protocol: TCP

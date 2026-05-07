@@ -113,7 +113,7 @@ echo ""
 
 # Apply CronJob with substituted values
 echo "Creating BGP Peer Cleanup CronJob..."
-envsubst '$AWS_REGION $CLUSTER_ID' < "$SCRIPT_DIR/cleanup-cronjob.yaml" | oc apply -f -
+envsubst '$AWS_REGION $CLUSTER_ID $IAM_ROLE_ARN' < "$SCRIPT_DIR/cleanup-cronjob.yaml" | oc apply -f -
 echo "✓ CronJob created"
 echo ""
 
