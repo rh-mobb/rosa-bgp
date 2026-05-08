@@ -10,9 +10,11 @@ resource "aws_instance" "test_instance_vpc2" {
 
   user_data = <<-EOF
     #!/bin/bash
-    dnf install -y httpd
+    dnf install -y httpd amazon-ssm-agent
     systemctl start httpd
     systemctl enable httpd
+    systemctl enable amazon-ssm-agent
+    systemctl start amazon-ssm-agent
     echo "Test Instance in VPC2" > /var/www/html/index.html
   EOF
 

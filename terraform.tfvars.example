@@ -28,3 +28,16 @@ rs_amazon_side_asn = "65000" # AS number of route server
 vpc2-ext_cidr = "192.168.0.0/16"
 vpc2-ext_private_subnets = ["192.168.1.0/24", "192.168.2.0/24", "192.168.3.0/24"]
 vpc2-ext_public_subnets = ["192.168.101.0/24", "192.168.102.0/24", "192.168.103.0/24"]
+
+# Aviatrix Configuration
+# REQUIRED: Connection to existing Aviatrix Controller
+avx_controller_public_ip       = "1.2.3.4"  # Replace with your Controller's public IP or FQDN
+avx_controller_admin_password  = "your-password-here"  # Controller admin password
+avx_access_account_name        = "aws-account-name"  # AWS account name as registered in Aviatrix Controller
+
+# OPTIONAL: Override defaults for Aviatrix deployment
+# avx_username                 = "admin"  # Controller username (default: "admin")
+# avx_transit_vpc_cidr         = "10.99.0.0/16"  # Transit VPC CIDR (default: "10.99.0.0/16")
+# avx_transit_instance_size    = "t3.medium"  # Transit Gateway instance size (default: "t3.medium")
+# avx_spoke_instance_size      = "t3.medium"  # Spoke Gateway instance size (default: "t3.medium")
+# avx_ha_enabled               = true  # Enable High Availability for gateways (default: true)
