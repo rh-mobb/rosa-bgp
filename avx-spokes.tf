@@ -17,6 +17,11 @@ module "avx_spoke_rosa" {
   vpc_id           = module.rosa-vpc.vpc_id
   gw_subnet        = var.vpc1-rosa_public_subnets[0]
   hagw_subnet      = var.vpc1-rosa_public_subnets[1]
+
+  # Comma-separated list of CUDN CIDRs.
+  # Not a variable because this is hardcoded in several other places
+  # right now including cluster YAML
+  included_advertised_spoke_routes = "10.100.0.0/16,10.101.0.0/16"
 }
 
 # Aviatrix Spoke Gateway for External VPC
