@@ -77,3 +77,50 @@ variable "install_openshift_virt" {
   type        = bool
   default     = true
 }
+
+# Aviatrix Configuration
+variable "avx_controller_public_ip" {
+  description = "Public IP or FQDN of the Aviatrix Controller"
+  type        = string
+}
+
+variable "avx_username" {
+  description = "Aviatrix Controller username"
+  type        = string
+  default     = "admin"
+}
+
+variable "avx_controller_admin_password" {
+  description = "Aviatrix Controller admin password"
+  type        = string
+  sensitive   = true
+}
+
+variable "avx_access_account_name" {
+  description = "Aviatrix access account name for AWS"
+  type        = string
+}
+
+variable "avx_transit_vpc_cidr" {
+  description = "CIDR block for Aviatrix Transit VPC"
+  type        = string
+  default     = "10.99.0.0/16"
+}
+
+variable "avx_transit_instance_size" {
+  description = "Instance size for Aviatrix Transit Gateway"
+  type        = string
+  default     = "t3.medium"
+}
+
+variable "avx_spoke_instance_size" {
+  description = "Instance size for Aviatrix Spoke Gateways"
+  type        = string
+  default     = "t3.medium"
+}
+
+variable "avx_ha_enabled" {
+  description = "Enable High Availability for Aviatrix gateways"
+  type        = bool
+  default     = true
+}

@@ -15,9 +15,19 @@ terraform {
       source  = "hashicorp/aws"
       version = ">= 6.0"
     }
+    aviatrix = {
+      source  = "AviatrixSystems/aviatrix"
+      version = "= 8.2.0"
+    }
     random = {
       source  = "hashicorp/random"
       version = ">= 3.0"
     }
   }
+}
+
+provider "aviatrix" {
+  controller_ip = var.avx_controller_public_ip
+  username      = var.avx_username
+  password      = var.avx_controller_admin_password
 }
