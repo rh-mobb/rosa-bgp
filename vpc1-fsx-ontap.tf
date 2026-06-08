@@ -7,9 +7,13 @@ resource "random_password" "fsx_ontap_svm_password" {
 
   length  = 14
   special = true
+  min_special = 1
   upper   = true
+  min_upper = 1
   lower   = true
+  min_lower = 1
   numeric = true
+  min_numeric = 1
 }
 
 # Security Group for FSx ONTAP - allows HTTPS and iSCSI from ROSA worker nodes
